@@ -20,6 +20,9 @@ from .base import (
     logger,
 )
 
+from agent.recovery.log_parser import LogParser
+from agent.recovery.diagnosis_engine import DiagnosisEngine
+from agent.recovery.recovery_planner import RecoveryPlanne
 
 # ===========================================================================
 # 7. ReadFileTool
@@ -167,52 +170,46 @@ class ValidateStructureTool(GMXBaseTool):
 
 class ParseGmxLogTool(Tool):
     """
-    Parse GROMACS .log files to extract key simulation metrics.
-    Critical for the agent to assess convergence and decide next steps.
+    Parse a GROMACS .log file and return a pre-interpreted,
+    action-oriented diagnosis string.
+
+    The LLM receives a structured recommendation — NOT raw metrics —
+    so it only needs to decide whether to execute the suggested action,
+    choose the fallback, or escalate.
     """
 
     name = "parse_gmx_log"
     description = (
-        "Parse a GROMACS .log file to extract convergence metrics, "
-        "performance data, warnings, and errors. "
-        "Input: log_file (path to .log). "
-        "Returns structured summary string with key metrics."
+        "Parse a GROMACS .log file and return a structured diagnosis "
+        "with a concrete recovery recommendation. "
+        "Input: log_file (path to .log file). "
+        "Returns: DIAGNOSIS, SEVERITY, EVIDENCE, PRIMARY_ACTION, "
+        "MDP_PATCHES, RERUN_STEPS, and AGENT_INSTRUCTION fields. "
+        "The agent should read SEVERITY and PRIMARY_ACTION to decide next steps."
     )
     inputs = {
         "log_file": {
             "type": "string",
-            "description": "Path to GROMACS .log file.",
+            "description": "Path to GROMACS .log file to analyse.",
         },
     }
     output_type = "string"
 
-    # Patterns for key GROMACS log entries
-    _EM_CONVERGED   = re.compile(r"converged to Fmax\s*=\s*([\d.eE+\-]+)", re.I)
-    _EM_NOT_CONV    = re.compile(r"did not converge", re.I)
-    _EPOT           = re.compile(r"Potential Energy\s*=\s*([\d.eE+\-]+)")
-    _FMAX           = re.compile(r"Maximum force\s*=\s*([\d.eE+\-]+)")
-    _PERFORMANCE    = re.compile(r"Performance:\s*([\d.]+)\s*ns/day")
-    _STEP           = re.compile(r"Step\s+(\d+),\s+time\s+([\d.]+)")
-
     def forward(self, log_file: str) -> str:
-        path = Path(log_file)
-        if not path.exists():
-            return f"ERROR: Log file not found: {log_file}"
-
-        text = path.read_text(errors="replace")
-        lines = text.splitlines()
-
-        results: dict = {
-            "file": str(path),
-            "em_converged": None,
-            "final_epot": None,
-            "final_fmax": None,
-            "performance_ns_per_day": None,
-            "last_step": None,
-            "warnings": [],
-            "errors": [],
-            "fatal": False,
-        }
+        try:
+            metrics     = LogParser.parse(log_file)
+            diagnosis   = DiagnosisEngine.diagnose(metrics)
+            recommend   = RecoveryPlanner.plan(diagnosis)
+            return recommend.to_agent_string()
+        except FileNotFoundError as exc:
+            return f"ERROR: {exc}"
+        except Exception as exc:  # noqa: BLE001
+            return (
+                f"ERROR: Log parsing failed unexpectedly: {exc}\n"
+                "DIAGNOSIS: UNKNOWN_ERROR\n"
+                "SEVERITY: NEEDS_HUMAN_REVIEW\n"
+                "AGENT_INSTRUCTION: Escalate to user — log parser crashed."
+            )
 
         for line in lines:
             if m := self._EM_CONVERGED.search(line):
