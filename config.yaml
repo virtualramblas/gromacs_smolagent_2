@@ -1,0 +1,53 @@
+# GROMACS Agent Configuration
+# ----------------------------
+
+# LLM backend — choose one block and comment out the others
+
+# Option A: Ollama (recommended for ease of use)
+llm:
+  backend: ollama
+  model_id: "ollama/qwen2.5:14b"
+  api_base: "http://localhost:11434"
+  temperature: 0.1          # Low temperature for deterministic tool calls
+  max_tokens: 4096
+
+# Option B: llama.cpp server
+# llm:
+#   backend: llamacpp
+#   model_id: "llamacpp/Phi-3.5-mini"
+#   api_base: "http://localhost:8080"
+#   temperature: 0.1
+#   max_tokens: 4096
+
+# Option C: HuggingFace Transformers (local, no server needed)
+# llm:
+#   backend: transformers
+#   model_id: "Qwen/Qwen2.5-Coder-7B-Instruct"
+#   temperature: 0.1
+#   max_tokens: 4096
+#   device: "cuda"           # or "cpu", "mps"
+#   load_in_4bit: true       # Enable 4-bit quantisation
+
+# Simulation defaults
+simulation:
+  force_field: "amber99sb-ildn"
+  water_model: "tip3p"
+  box_type: "dodecahedron"
+  box_distance: 1.0          # nm
+  salt_concentration: 0.15   # mol/L
+  temperature: 300           # K
+  pressure: 1.0              # bar
+  n_threads: 4
+  use_gpu: false
+
+# Pipeline settings
+pipeline:
+  max_recovery_attempts: 3
+  templates_dir: "mdp_templates"
+  state_file: "pipeline_state.json"
+  work_dir: "gmx_run"        # Subdirectory for all GROMACS output files
+
+# Logging
+logging:
+  level: "INFO"              # DEBUG, INFO, WARNING, ERROR
+  log_file: "agent_run.log"
