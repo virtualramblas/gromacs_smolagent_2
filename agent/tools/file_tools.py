@@ -22,7 +22,7 @@ from .base import (
 
 from agent.recovery.log_parser import LogParser
 from agent.recovery.diagnosis_engine import DiagnosisEngine
-from agent.recovery.recovery_planner import RecoveryPlanne
+from agent.recovery.recovery_planner import RecoveryPlanner
 
 # ===========================================================================
 # 7. ReadFileTool
