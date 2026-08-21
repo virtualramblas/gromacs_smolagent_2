@@ -1,0 +1,65 @@
+; Production MD Parameters
+; ---------------------------------
+title                   = Production MD
+
+; Run control
+integrator              = md
+dt                      = 0.002
+nsteps                  = 500000        ; 1 ns total (adjust as needed)
+
+; Output control
+nstxout                 = 0
+nstvout                 = 0
+nstenergy               = 5000
+nstlog                  = 5000
+nstxout-compressed      = 5000          ; Write frame every 10 ps
+compressed-x-grps       = System
+
+; Neighbour searching
+cutoff-scheme           = Verlet
+nstlist                 = 10
+rcoulomb                = 1.0
+rvdw                    = 1.0
+
+; Electrostatics
+coulombtype             = PME
+pme-order               = 4
+fourierspacing          = 0.16
+
+; Van der Waals
+vdwtype                 = Cut-off
+vdw-modifier            = Force-switch
+rvdw-switch             = 0.9
+
+; Temperature coupling
+tcoupl                  = V-rescale
+tc-grps                 = Protein Non-Protein
+tau-t                   = 0.1   0.1
+ref-t                   = 300   300
+
+; Pressure coupling
+pcoupl                  = Parrinello-Rahman
+pcoupltype              = isotropic
+tau-p                   = 2.0
+ref-p                   = 1.0
+compressibility         = 4.5e-5
+
+; Bonds
+constraints             = h-bonds
+constraint-algorithm    = LINCS
+lincs-iter              = 1
+lincs-order             = 4
+continuation            = yes
+
+; Velocity generation — OFF
+gen-vel                 = no
+
+; Periodic boundary conditions
+pbc                     = xyz
+
+; Dispersion correction
+DispCorr                = EnerPres
+
+; COM motion removal
+comm-mode               = Linear
+nstcomm                 = 100

@@ -1,0 +1,61 @@
+; NPT Equilibration Parameters
+; ---------------------------------
+title                   = NPT Equilibration
+
+; Run control
+integrator              = md
+dt                      = 0.002
+nsteps                  = 50000         ; 100 ps total
+
+; Output control
+nstxout                 = 0
+nstvout                 = 0
+nstenergy               = 500
+nstlog                  = 500
+nstxout-compressed      = 500
+compressed-x-grps       = System
+
+; Neighbour searching
+cutoff-scheme           = Verlet
+nstlist                 = 10
+rcoulomb                = 1.0
+rvdw                    = 1.0
+
+; Electrostatics
+coulombtype             = PME
+pme-order               = 4
+fourierspacing          = 0.16
+
+; Van der Waals
+vdwtype                 = Cut-off
+vdw-modifier            = Force-switch
+rvdw-switch             = 0.9
+
+; Temperature coupling
+tcoupl                  = V-rescale
+tc-grps                 = Protein Non-Protein
+tau-t                   = 0.1   0.1
+ref-t                   = 300   300
+
+; Pressure coupling (Parrinello-Rahman)
+pcoupl                  = Parrinello-Rahman
+pcoupltype              = isotropic
+tau-p                   = 2.0
+ref-p                   = 1.0
+compressibility         = 4.5e-5
+
+; Bonds
+constraints             = h-bonds
+constraint-algorithm    = LINCS
+lincs-iter              = 1
+lincs-order             = 4
+continuation            = yes           ; Continuation from NVT
+
+; Velocity generation — OFF (continuing from NVT)
+gen-vel                 = no
+
+; Periodic boundary conditions
+pbc                     = xyz
+
+; Dispersion correction
+DispCorr                = EnerPres

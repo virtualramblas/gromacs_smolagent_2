@@ -1,0 +1,40 @@
+; Energy Minimisation Parameters
+; ---------------------------------
+title                   = Energy Minimisation
+
+; Run control
+integrator              = steep         ; Steepest descent algorithm
+emtol                   = 1000.0        ; Stop when Fmax < 1000 kJ/mol/nm
+emstep                  = 0.01          ; Initial step size (nm)
+nsteps                  = 5000          ; Maximum number of steps
+
+; Output control
+nstxout                 = 0             ; Suppress coordinate output
+nstvout                 = 0             ; Suppress velocity output
+nstenergy               = 500           ; Write energies every N steps
+nstlog                  = 500           ; Write to log every N steps
+
+; Neighbour searching
+cutoff-scheme           = Verlet
+nstlist                 = 1             ; Frequency to update neighbour list
+rcoulomb                = 1.0           ; Short-range electrostatic cutoff (nm)
+rvdw                    = 1.0           ; Short-range van der Waals cutoff (nm)
+
+; Electrostatics
+coulombtype             = PME           ; Particle Mesh Ewald
+pme-order               = 4
+fourierspacing          = 0.16
+
+; Van der Waals
+vdwtype                 = Cut-off
+vdw-modifier            = Force-switch
+rvdw-switch             = 0.9
+
+; Bonds
+constraints             = h-bonds       ; Constrain H-bonds
+constraint-algorithm    = LINCS
+lincs-iter              = 1
+lincs-order             = 4
+
+; Periodic boundary conditions
+pbc                     = xyz

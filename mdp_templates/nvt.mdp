@@ -1,0 +1,59 @@
+; NVT Equilibration Parameters
+; ---------------------------------
+title                   = NVT Equilibration
+
+; Run control
+integrator              = md
+dt                      = 0.002         ; Timestep (ps)
+nsteps                  = 50000         ; 100 ps total
+
+; Output control
+nstxout                 = 0
+nstvout                 = 0
+nstenergy               = 500
+nstlog                  = 500
+nstxout-compressed      = 500           ; Write compressed trajectory
+compressed-x-grps       = System
+
+; Neighbour searching
+cutoff-scheme           = Verlet
+nstlist                 = 10
+rcoulomb                = 1.0
+rvdw                    = 1.0
+
+; Electrostatics
+coulombtype             = PME
+pme-order               = 4
+fourierspacing          = 0.16
+
+; Van der Waals
+vdwtype                 = Cut-off
+vdw-modifier            = Force-switch
+rvdw-switch             = 0.9
+
+; Temperature coupling (V-rescale)
+tcoupl                  = V-rescale
+tc-grps                 = Protein Non-Protein
+tau-t                   = 0.1   0.1
+ref-t                   = 300   300
+
+; Pressure coupling — OFF for NVT
+pcoupl                  = no
+
+; Bonds
+constraints             = h-bonds
+constraint-algorithm    = LINCS
+lincs-iter              = 1
+lincs-order             = 4
+continuation            = no            ; First dynamics run
+
+; Velocity generation
+gen-vel                 = yes
+gen-temp                = 300
+gen-seed                = -1            ; Random seed
+
+; Periodic boundary conditions
+pbc                     = xyz
+
+; Dispersion correction
+DispCorr                = EnerPres
