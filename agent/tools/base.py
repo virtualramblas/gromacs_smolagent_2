@@ -165,14 +165,20 @@ class GMXBaseTool(Tool):
     """
     Abstract base for all GROMACS tools.
 
-    Subclasses must implement:
-        _run_gmx(**kwargs) -> GMXResult
+    KEY CHANGE vs. original design:
+        forward() is NOT defined here.
+        Each subclass must define its own forward() with explicit
+        parameter names matching its 'inputs' dict exactly.
+        This is required by SmolAgent's validate_arguments() check.
 
-    The public forward() method calls _run_gmx and always returns
-    a plain string so SmolAgent's CodeAgent can parse it.
+    Subclasses implement:
+        forward(self, param1, param2, ...) -> str
+            which calls self._safe_run(param1=param1, ...)
+
+        _run_gmx(**kwargs) -> GMXResult
+            which contains the actual GROMACS logic.
     """
 
-    # SmolAgent requires these class-level attributes
     name: str = "gmx_base_tool"
     description: str = "Base GROMACS tool — do not use directly."
     inputs: dict = {}
@@ -183,50 +189,37 @@ class GMXBaseTool(Tool):
         self.work_dir = Path(work_dir).resolve()
         self.work_dir.mkdir(parents=True, exist_ok=True)
 
-    # ------------------------------------------------------------------
-    # Subclasses override this
-    # ------------------------------------------------------------------
-
     def _run_gmx(self, **kwargs) -> GMXResult:
         raise NotImplementedError
 
-    # ------------------------------------------------------------------
-    # SmolAgent entry point
-    # ------------------------------------------------------------------
-
-    def forward(self, **kwargs) -> str:
+    def _safe_run(self, **kwargs) -> str:
+        """
+        Shared error-handling wrapper called by every subclass forward().
+        Catches EnvironmentError, TimeoutExpired, and unexpected exceptions,
+        returning a well-formed error string in all cases.
+        """
         try:
             result = self._run_gmx(**kwargs)
+            return result.to_agent_string()
         except EnvironmentError as exc:
             return GMXResult(
-                success=False,
-                command="",
-                returncode=-1,
-                stdout="",
-                stderr=str(exc),
+                success=False, command="", returncode=-1,
+                stdout="", stderr=str(exc),
                 errors=[str(exc)],
                 summary=f"Environment error: {exc}",
             ).to_agent_string()
         except subprocess.TimeoutExpired:
             return GMXResult(
-                success=False,
-                command="",
-                returncode=-1,
-                stdout="",
-                stderr="Process timed out.",
+                success=False, command="", returncode=-1,
+                stdout="", stderr="Process timed out.",
                 errors=["Process timed out."],
                 summary="GMX command exceeded timeout limit.",
             ).to_agent_string()
         except Exception as exc:  # noqa: BLE001
             logger.exception("Unexpected error in tool %s", self.name)
             return GMXResult(
-                success=False,
-                command="",
-                returncode=-1,
-                stdout="",
-                stderr=str(exc),
+                success=False, command="", returncode=-1,
+                stdout="", stderr=str(exc),
                 errors=[str(exc)],
                 summary=f"Unexpected error: {exc}",
             ).to_agent_string()
-
-        return result.to_agent_string()

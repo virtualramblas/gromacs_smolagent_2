@@ -29,12 +29,6 @@ from .base import (
 # ===========================================================================
 
 class Pdb2GmxTool(GMXBaseTool):
-    """
-    Wraps: gmx pdb2gmx
-
-    Converts a PDB file into a GROMACS topology and coordinate file.
-    The agent must choose a force field and water model.
-    """
 
     name = "pdb2gmx"
     description = (
@@ -52,10 +46,7 @@ class Pdb2GmxTool(GMXBaseTool):
         },
         "force_field": {
             "type": "string",
-            "description": (
-                "GROMACS force field name, e.g. 'amber99sb-ildn', "
-                "'charmm36m', 'oplsaa'."
-            ),
+            "description": "GROMACS force field name, e.g. 'amber99sb-ildn'.",
         },
         "water_model": {
             "type": "string",
@@ -79,6 +70,25 @@ class Pdb2GmxTool(GMXBaseTool):
     }
     output_type = "string"
 
+    # ---- Explicit forward() — signature matches inputs keys exactly ----
+    def forward(
+        self,
+        pdb_file: str,
+        force_field: str = "amber99sb-ildn",
+        water_model: str = "tip3p",
+        output_gro: Optional[str] = None,
+        output_top: Optional[str] = None,
+        ignore_hydrogens: bool = True,
+    ) -> str:
+        return self._safe_run(
+            pdb_file=pdb_file,
+            force_field=force_field,
+            water_model=water_model,
+            output_gro=output_gro,
+            output_top=output_top,
+            ignore_hydrogens=ignore_hydrogens,
+        )
+
     def _run_gmx(
         self,
         pdb_file: str,
@@ -90,8 +100,8 @@ class Pdb2GmxTool(GMXBaseTool):
     ) -> GMXResult:
 
         pdb_path = Path(pdb_file).resolve()
-        out_gro = Path(output_gro) if output_gro else self.work_dir / "conf.gro"
-        out_top = Path(output_top) if output_top else self.work_dir / "topol.top"
+        out_gro  = Path(output_gro) if output_gro else self.work_dir / "conf.gro"
+        out_top  = Path(output_top) if output_top else self.work_dir / "topol.top"
         out_posre = self.work_dir / "posre.itp"
 
         cmd = [
@@ -107,23 +117,12 @@ class Pdb2GmxTool(GMXBaseTool):
 
         rc, stdout, stderr = run_gmx_command(cmd, self.work_dir)
 
-        output_files = {
-            "gro": out_gro,
-            "top": out_top,
-            "posre": out_posre,
-        }
+        output_files = {"gro": out_gro, "top": out_top, "posre": out_posre}
         warnings = extract_warnings(stderr)
-        errors = extract_errors(stderr)
-        missing = assert_files_exist(output_files)
+        errors   = extract_errors(stderr)
+        missing  = assert_files_exist({"gro": out_gro, "top": out_top})
         errors.extend(missing)
-
         success = rc == 0 and not missing
-
-        summary = (
-            f"pdb2gmx {'succeeded' if success else 'FAILED'} "
-            f"(ff={force_field}, water={water_model}). "
-            f"{len(warnings)} warning(s), {len(errors)} error(s)."
-        )
 
         return GMXResult(
             success=success,
@@ -134,7 +133,11 @@ class Pdb2GmxTool(GMXBaseTool):
             output_files=output_files,
             warnings=warnings,
             errors=errors,
-            summary=summary,
+            summary=(
+                f"pdb2gmx {'succeeded' if success else 'FAILED'} "
+                f"(ff={force_field}, water={water_model}). "
+                f"{len(warnings)} warning(s), {len(errors)} error(s)."
+            ),
         )
 
 
@@ -143,13 +146,6 @@ class Pdb2GmxTool(GMXBaseTool):
 # ===========================================================================
 
 class EditconfTool(GMXBaseTool):
-    """
-    Wraps: gmx editconf
-
-    Defines the simulation box around the protein.
-    Typically used to set a cubic or dodecahedral box with a
-    minimum distance from the protein to the box edge.
-    """
 
     name = "editconf"
     description = (
@@ -171,21 +167,31 @@ class EditconfTool(GMXBaseTool):
         "box_type": {
             "type": "string",
             "description": (
-                "Box geometry: 'cubic', 'dodecahedron' (recommended "
-                "for globular proteins), or 'triclinic'."
+                "Box geometry: 'cubic', 'dodecahedron', or 'triclinic'."
             ),
             "nullable": True,
         },
         "distance": {
             "type": "number",
-            "description": (
-                "Minimum distance in nm between protein and box edge. "
-                "Typical value: 1.0–1.2 nm."
-            ),
+            "description": "Minimum distance in nm between protein and box edge.",
             "nullable": True,
         },
     }
     output_type = "string"
+
+    def forward(
+        self,
+        input_gro: str,
+        output_gro: Optional[str] = None,
+        box_type: str = "dodecahedron",
+        distance: float = 1.0,
+    ) -> str:
+        return self._safe_run(
+            input_gro=input_gro,
+            output_gro=output_gro,
+            box_type=box_type,
+            distance=distance,
+        )
 
     def _run_gmx(
         self,
@@ -195,7 +201,7 @@ class EditconfTool(GMXBaseTool):
         distance: float = 1.0,
     ) -> GMXResult:
 
-        in_gro = Path(input_gro).resolve()
+        in_gro  = Path(input_gro).resolve()
         out_gro = Path(output_gro) if output_gro else self.work_dir / "conf_box.gro"
 
         cmd = [
@@ -210,17 +216,10 @@ class EditconfTool(GMXBaseTool):
 
         output_files = {"gro": out_gro}
         warnings = extract_warnings(stderr)
-        errors = extract_errors(stderr)
-        missing = assert_files_exist(output_files)
+        errors   = extract_errors(stderr)
+        missing  = assert_files_exist(output_files)
         errors.extend(missing)
-
         success = rc == 0 and not missing
-
-        summary = (
-            f"editconf {'succeeded' if success else 'FAILED'} "
-            f"(box={box_type}, d={distance} nm). "
-            f"{len(warnings)} warning(s), {len(errors)} error(s)."
-        )
 
         return GMXResult(
             success=success,
@@ -231,7 +230,11 @@ class EditconfTool(GMXBaseTool):
             output_files=output_files,
             warnings=warnings,
             errors=errors,
-            summary=summary,
+            summary=(
+                f"editconf {'succeeded' if success else 'FAILED'} "
+                f"(box={box_type}, d={distance} nm). "
+                f"{len(warnings)} warning(s), {len(errors)} error(s)."
+            ),
         )
 
 
@@ -240,12 +243,6 @@ class EditconfTool(GMXBaseTool):
 # ===========================================================================
 
 class SolvateTool(GMXBaseTool):
-    """
-    Wraps: gmx solvate
-
-    Fills the simulation box with water molecules.
-    Updates the topology file in-place to reflect added solvent.
-    """
 
     name = "solvate"
     description = (
@@ -270,14 +267,25 @@ class SolvateTool(GMXBaseTool):
         },
         "solvent_model": {
             "type": "string",
-            "description": (
-                "Solvent configuration file. Defaults to 'spc216.gro' "
-                "(compatible with TIP3P/SPC water models)."
-            ),
+            "description": "Solvent configuration file, default 'spc216.gro'.",
             "nullable": True,
         },
     }
     output_type = "string"
+
+    def forward(
+        self,
+        input_gro: str,
+        topology_top: str,
+        output_gro: Optional[str] = None,
+        solvent_model: str = "spc216.gro",
+    ) -> str:
+        return self._safe_run(
+            input_gro=input_gro,
+            topology_top=topology_top,
+            output_gro=output_gro,
+            solvent_model=solvent_model,
+        )
 
     def _run_gmx(
         self,
@@ -287,40 +295,31 @@ class SolvateTool(GMXBaseTool):
         solvent_model: str = "spc216.gro",
     ) -> GMXResult:
 
-        in_gro = Path(input_gro).resolve()
-        top = Path(topology_top).resolve()
+        in_gro  = Path(input_gro).resolve()
+        top     = Path(topology_top).resolve()
         out_gro = Path(output_gro) if output_gro else self.work_dir / "conf_solv.gro"
 
         cmd = [
             "gmx", "solvate",
             "-cp", str(in_gro),
             "-cs", solvent_model,
-            "-o", str(out_gro),
-            "-p", str(top),
+            "-o",  str(out_gro),
+            "-p",  str(top),
         ]
 
         rc, stdout, stderr = run_gmx_command(cmd, self.work_dir)
 
-        output_files = {"gro": out_gro, "top": top}
         warnings = extract_warnings(stderr)
-        errors = extract_errors(stderr)
-        missing = assert_files_exist({"gro": out_gro})  # top already existed
+        errors   = extract_errors(stderr)
+        missing  = assert_files_exist({"gro": out_gro})
         errors.extend(missing)
+        success = rc == 0 and not missing
 
-        # Extract number of added water molecules from stdout
         n_water = "unknown"
         for line in (stdout + stderr).splitlines():
             if "Number of solvent molecules" in line or "SOL" in line:
                 n_water = line.strip()
                 break
-
-        success = rc == 0 and not missing
-
-        summary = (
-            f"solvate {'succeeded' if success else 'FAILED'}. "
-            f"Solvent info: {n_water}. "
-            f"{len(warnings)} warning(s), {len(errors)} error(s)."
-        )
 
         return GMXResult(
             success=success,
@@ -328,10 +327,14 @@ class SolvateTool(GMXBaseTool):
             returncode=rc,
             stdout=stdout,
             stderr=stderr,
-            output_files=output_files,
+            output_files={"gro": out_gro, "top": top},
             warnings=warnings,
             errors=errors,
-            summary=summary,
+            summary=(
+                f"solvate {'succeeded' if success else 'FAILED'}. "
+                f"Solvent info: {n_water}. "
+                f"{len(warnings)} warning(s), {len(errors)} error(s)."
+            ),
         )
 
 
@@ -340,13 +343,6 @@ class SolvateTool(GMXBaseTool):
 # ===========================================================================
 
 class GenionTool(GMXBaseTool):
-    """
-    Wraps: gmx genion
-
-    Adds counter-ions to neutralise the system and/or reach a target
-    salt concentration. Requires a pre-built .tpr from a genion .mdp.
-    Replaces solvent molecules with ions.
-    """
 
     name = "genion"
     description = (
@@ -354,7 +350,7 @@ class GenionTool(GMXBaseTool):
         "Requires a .tpr file (built from ions.mdp via grompp). "
         "Inputs: input_tpr, output_gro, topology_top, "
         "concentration (mol/L), neutral (bool). "
-        "The tool automatically selects the SOL group for ion replacement. "
+        "Automatically selects the SOL group for ion replacement. "
         "Returns status string."
     )
     inputs = {
@@ -362,18 +358,18 @@ class GenionTool(GMXBaseTool):
             "type": "string",
             "description": "Path to .tpr file prepared for genion step.",
         },
+        "topology_top": {
+            "type": "string",
+            "description": "Path to topology .top file (updated in-place).",
+        },
         "output_gro": {
             "type": "string",
             "description": "Path for output .gro file with ions added.",
             "nullable": True,
         },
-        "topology_top": {
-            "type": "string",
-            "description": "Path to topology .top file (updated in-place).",
-        },
         "concentration": {
             "type": "number",
-            "description": "Salt concentration in mol/L (e.g. 0.15 for physiological).",
+            "description": "Salt concentration in mol/L (e.g. 0.15).",
             "nullable": True,
         },
         "neutral": {
@@ -394,6 +390,26 @@ class GenionTool(GMXBaseTool):
     }
     output_type = "string"
 
+    def forward(
+        self,
+        input_tpr: str,
+        topology_top: str,
+        output_gro: Optional[str] = None,
+        concentration: float = 0.15,
+        neutral: bool = True,
+        positive_ion: str = "NA",
+        negative_ion: str = "CL",
+    ) -> str:
+        return self._safe_run(
+            input_tpr=input_tpr,
+            topology_top=topology_top,
+            output_gro=output_gro,
+            concentration=concentration,
+            neutral=neutral,
+            positive_ion=positive_ion,
+            negative_ion=negative_ion,
+        )
+
     def _run_gmx(
         self,
         input_tpr: str,
@@ -405,42 +421,31 @@ class GenionTool(GMXBaseTool):
         negative_ion: str = "CL",
     ) -> GMXResult:
 
-        in_tpr = Path(input_tpr).resolve()
-        top = Path(topology_top).resolve()
+        in_tpr  = Path(input_tpr).resolve()
+        top     = Path(topology_top).resolve()
         out_gro = Path(output_gro) if output_gro else self.work_dir / "conf_ions.gro"
 
         cmd = [
             "gmx", "genion",
-            "-s", str(in_tpr),
-            "-o", str(out_gro),
-            "-p", str(top),
-            "-pname", positive_ion,
-            "-nname", negative_ion,
-            "-conc", str(concentration),
+            "-s",      str(in_tpr),
+            "-o",      str(out_gro),
+            "-p",      str(top),
+            "-pname",  positive_ion,
+            "-nname",  negative_ion,
+            "-conc",   str(concentration),
         ]
         if neutral:
             cmd.append("-neutral")
 
-        # genion requires interactive group selection — pipe "SOL" group
-        # GROMACS typically lists SOL as group 13, but piping the name is safer
         rc, stdout, stderr = run_gmx_command(
             cmd, self.work_dir, stdin_text="SOL\n"
         )
 
-        output_files = {"gro": out_gro, "top": top}
         warnings = extract_warnings(stderr)
-        errors = extract_errors(stderr)
-        missing = assert_files_exist({"gro": out_gro})
+        errors   = extract_errors(stderr)
+        missing  = assert_files_exist({"gro": out_gro})
         errors.extend(missing)
-
         success = rc == 0 and not missing
-
-        summary = (
-            f"genion {'succeeded' if success else 'FAILED'} "
-            f"(conc={concentration} M, neutral={neutral}, "
-            f"+ion={positive_ion}, -ion={negative_ion}). "
-            f"{len(warnings)} warning(s), {len(errors)} error(s)."
-        )
 
         return GMXResult(
             success=success,
@@ -448,10 +453,14 @@ class GenionTool(GMXBaseTool):
             returncode=rc,
             stdout=stdout,
             stderr=stderr,
-            output_files=output_files,
+            output_files={"gro": out_gro, "top": top},
             warnings=warnings,
             errors=errors,
-            summary=summary,
+            summary=(
+                f"genion {'succeeded' if success else 'FAILED'} "
+                f"(conc={concentration} M, neutral={neutral}). "
+                f"{len(warnings)} warning(s), {len(errors)} error(s)."
+            ),
         )
 
 
@@ -460,13 +469,6 @@ class GenionTool(GMXBaseTool):
 # ===========================================================================
 
 class GromppTool(GMXBaseTool):
-    """
-    Wraps: gmx grompp
-
-    The GROMACS pre-processor. Combines topology, coordinates, and
-    simulation parameters (.mdp) into a portable run input file (.tpr).
-    Used before every mdrun call (EM, NVT, NPT, production MD).
-    """
 
     name = "grompp"
     description = (
@@ -505,14 +507,31 @@ class GromppTool(GMXBaseTool):
         },
         "max_warnings": {
             "type": "integer",
-            "description": (
-                "Maximum allowed grompp warnings before aborting. "
-                "Default 0 (strict). Increase cautiously."
-            ),
+            "description": "Maximum allowed grompp warnings. Default 0.",
             "nullable": True,
         },
     }
     output_type = "string"
+
+    def forward(
+        self,
+        mdp_file: str,
+        input_gro: str,
+        topology_top: str,
+        output_tpr: Optional[str] = None,
+        index_file: Optional[str] = None,
+        checkpoint_file: Optional[str] = None,
+        max_warnings: int = 0,
+    ) -> str:
+        return self._safe_run(
+            mdp_file=mdp_file,
+            input_gro=input_gro,
+            topology_top=topology_top,
+            output_tpr=output_tpr,
+            index_file=index_file,
+            checkpoint_file=checkpoint_file,
+            max_warnings=max_warnings,
+        )
 
     def _run_gmx(
         self,
@@ -525,17 +544,17 @@ class GromppTool(GMXBaseTool):
         max_warnings: int = 0,
     ) -> GMXResult:
 
-        mdp = Path(mdp_file).resolve()
-        gro = Path(input_gro).resolve()
-        top = Path(topology_top).resolve()
+        mdp     = Path(mdp_file).resolve()
+        gro     = Path(input_gro).resolve()
+        top     = Path(topology_top).resolve()
         out_tpr = Path(output_tpr) if output_tpr else self.work_dir / "topol.tpr"
 
         cmd = [
             "gmx", "grompp",
-            "-f", str(mdp),
-            "-c", str(gro),
-            "-p", str(top),
-            "-o", str(out_tpr),
+            "-f",       str(mdp),
+            "-c",       str(gro),
+            "-p",       str(top),
+            "-o",       str(out_tpr),
             "-maxwarn", str(max_warnings),
         ]
         if index_file:
@@ -545,19 +564,11 @@ class GromppTool(GMXBaseTool):
 
         rc, stdout, stderr = run_gmx_command(cmd, self.work_dir)
 
-        output_files = {"tpr": out_tpr}
         warnings = extract_warnings(stderr)
-        errors = extract_errors(stderr)
-        missing = assert_files_exist(output_files)
+        errors   = extract_errors(stderr)
+        missing  = assert_files_exist({"tpr": out_tpr})
         errors.extend(missing)
-
         success = rc == 0 and not missing
-
-        summary = (
-            f"grompp {'succeeded' if success else 'FAILED'} "
-            f"(mdp={mdp.name}, maxwarn={max_warnings}). "
-            f"{len(warnings)} warning(s), {len(errors)} error(s)."
-        )
 
         return GMXResult(
             success=success,
@@ -565,10 +576,14 @@ class GromppTool(GMXBaseTool):
             returncode=rc,
             stdout=stdout,
             stderr=stderr,
-            output_files=output_files,
+            output_files={"tpr": out_tpr},
             warnings=warnings,
             errors=errors,
-            summary=summary,
+            summary=(
+                f"grompp {'succeeded' if success else 'FAILED'} "
+                f"(mdp={mdp.name}, maxwarn={max_warnings}). "
+                f"{len(warnings)} warning(s), {len(errors)} error(s)."
+            ),
         )
 
 
@@ -577,13 +592,6 @@ class GromppTool(GMXBaseTool):
 # ===========================================================================
 
 class MdrunTool(GMXBaseTool):
-    """
-    Wraps: gmx mdrun
-
-    Executes the simulation (energy minimisation, NVT/NPT equilibration,
-    or production MD). Handles both fresh runs and checkpoint continuations.
-    This is the most compute-intensive step.
-    """
 
     name = "mdrun"
     description = (
@@ -600,15 +608,12 @@ class MdrunTool(GMXBaseTool):
         },
         "run_label": {
             "type": "string",
-            "description": (
-                "Output file prefix, e.g. 'em', 'nvt', 'npt', 'md'. "
-                "All output files will use this prefix."
-            ),
+            "description": "Output file prefix, e.g. 'em', 'nvt', 'npt', 'md'.",
             "nullable": True,
         },
         "n_threads": {
             "type": "integer",
-            "description": "Number of CPU threads (-ntmpi 1 -ntomp N). Default: 4.",
+            "description": "Number of CPU threads. Default: 4.",
             "nullable": True,
         },
         "use_gpu": {
@@ -623,14 +628,29 @@ class MdrunTool(GMXBaseTool):
         },
         "extra_flags": {
             "type": "array",
-            "description": (
-                "Additional mdrun flags as a list of strings, "
-                "e.g. ['-v', '-pin', 'on']."
-            ),
+            "description": "Additional mdrun flags as a list of strings.",
             "nullable": True,
         },
     }
     output_type = "string"
+
+    def forward(
+        self,
+        input_tpr: str,
+        run_label: str = "md",
+        n_threads: int = 4,
+        use_gpu: bool = False,
+        checkpoint_file: Optional[str] = None,
+        extra_flags: Optional[list[str]] = None,
+    ) -> str:
+        return self._safe_run(
+            input_tpr=input_tpr,
+            run_label=run_label,
+            n_threads=n_threads,
+            use_gpu=use_gpu,
+            checkpoint_file=checkpoint_file,
+            extra_flags=extra_flags,
+        )
 
     def _run_gmx(
         self,
@@ -642,15 +662,15 @@ class MdrunTool(GMXBaseTool):
         extra_flags: Optional[list[str]] = None,
     ) -> GMXResult:
 
-        in_tpr = Path(input_tpr).resolve()
+        in_tpr  = Path(input_tpr).resolve()
         out_dir = self.work_dir
 
         cmd = [
             "gmx", "mdrun",
-            "-s", str(in_tpr),
+            "-s",      str(in_tpr),
             "-deffnm", run_label,
-            "-ntmpi", "1",
-            "-ntomp", str(n_threads),
+            "-ntmpi",  "1",
+            "-ntomp",  str(n_threads),
         ]
         if use_gpu:
             cmd += ["-nb", "gpu"]
@@ -660,34 +680,26 @@ class MdrunTool(GMXBaseTool):
             cmd.extend(extra_flags)
 
         rc, stdout, stderr = run_gmx_command(
-            cmd, out_dir, timeout=86400  # 24 h max for production runs
+            cmd, out_dir, timeout=86400
         )
 
         output_files = {
-            "xtc":  out_dir / f"{run_label}.xtc",
-            "trr":  out_dir / f"{run_label}.trr",
-            "edr":  out_dir / f"{run_label}.edr",
-            "log":  out_dir / f"{run_label}.log",
-            "cpt":  out_dir / f"{run_label}.cpt",
-            "gro":  out_dir / f"{run_label}.gro",
+            "xtc": out_dir / f"{run_label}.xtc",
+            "trr": out_dir / f"{run_label}.trr",
+            "edr": out_dir / f"{run_label}.edr",
+            "log": out_dir / f"{run_label}.log",
+            "cpt": out_dir / f"{run_label}.cpt",
+            "gro": out_dir / f"{run_label}.gro",
         }
 
         warnings = extract_warnings(stderr)
-        errors = extract_errors(stderr)
-        # For mdrun, .edr and .log are the minimum success indicators
-        missing = assert_files_exist({
+        errors   = extract_errors(stderr)
+        missing  = assert_files_exist({
             "edr": output_files["edr"],
             "log": output_files["log"],
         })
         errors.extend(missing)
-
         success = rc == 0 and not missing
-
-        summary = (
-            f"mdrun {'succeeded' if success else 'FAILED'} "
-            f"(label={run_label}, threads={n_threads}, gpu={use_gpu}). "
-            f"{len(warnings)} warning(s), {len(errors)} error(s)."
-        )
 
         return GMXResult(
             success=success,
@@ -698,5 +710,9 @@ class MdrunTool(GMXBaseTool):
             output_files=output_files,
             warnings=warnings,
             errors=errors,
-            summary=summary,
+            summary=(
+                f"mdrun {'succeeded' if success else 'FAILED'} "
+                f"(label={run_label}, threads={n_threads}, gpu={use_gpu}). "
+                f"{len(warnings)} warning(s), {len(errors)} error(s)."
+            ),
         )

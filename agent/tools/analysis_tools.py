@@ -107,6 +107,19 @@ class EnergyAnalysisTool(GMXBaseTool):
             errors=errors,
             summary=summary,
         )
+    
+    # Explicit forward()
+    def forward(
+        self,
+        edr_file: str,
+        output_xvg: Optional[str] = None,
+        energy_terms: Optional[list[str]] = None,
+    ) -> str:
+        return self._safe_run(
+            edr_file=edr_file,
+            output_xvg=output_xvg,
+            energy_terms=energy_terms,
+        )
 
 
 # ===========================================================================
@@ -199,4 +212,19 @@ class RMSDAnalysisTool(GMXBaseTool):
             warnings=warnings,
             errors=errors,
             summary=summary,
+        )
+
+    # Explicit forward()
+    def forward(
+        self,
+        tpr_file: str,
+        trajectory_file: str,
+        output_xvg: Optional[str] = None,
+        group: str = "Backbone",
+    ) -> str:
+        return self._safe_run(
+            tpr_file=tpr_file,
+            trajectory_file=trajectory_file,
+            output_xvg=output_xvg,
+            group=group,
         )

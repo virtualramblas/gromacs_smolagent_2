@@ -113,12 +113,6 @@ class WriteFileTool(Tool):
 # ===========================================================================
 
 class ValidateStructureTool(GMXBaseTool):
-    """
-    Wraps: gmx check
-
-    Performs basic structural validation on .gro or .pdb files.
-    Also checks topology consistency.
-    """
 
     name = "validate_structure"
     description = (
@@ -134,23 +128,19 @@ class ValidateStructureTool(GMXBaseTool):
     }
     output_type = "string"
 
+    # Explicit forward() — single parameter matches inputs exactly
+    def forward(self, input_file: str) -> str:
+        return self._safe_run(input_file=input_file)
+
     def _run_gmx(self, input_file: str) -> GMXResult:
         in_file = Path(input_file).resolve()
-
         cmd = ["gmx", "check", "-f", str(in_file)]
         rc, stdout, stderr = run_gmx_command(cmd, self.work_dir)
 
         combined = stdout + stderr
         warnings = extract_warnings(combined)
-        errors = extract_errors(combined)
-
-        success = rc == 0
-
-        summary = (
-            f"Structure check {'passed' if success else 'FAILED'} "
-            f"for {in_file.name}. "
-            f"{len(warnings)} warning(s), {len(errors)} error(s)."
-        )
+        errors   = extract_errors(combined)
+        success  = rc == 0
 
         return GMXResult(
             success=success,
@@ -160,7 +150,11 @@ class ValidateStructureTool(GMXBaseTool):
             stderr=stderr,
             warnings=warnings,
             errors=errors,
-            summary=summary,
+            summary=(
+                f"Structure check {'passed' if success else 'FAILED'} "
+                f"for {in_file.name}. "
+                f"{len(warnings)} warning(s), {len(errors)} error(s)."
+            ),
         )
 
 
