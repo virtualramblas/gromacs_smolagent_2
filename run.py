@@ -174,12 +174,9 @@ encountered and resolved.
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    args = parse_args()
-
-    # Load config
+    args   = parse_args()
     config = load_config(args.config)
 
-    # Setup logging
     log_cfg = config.get("logging", {})
     setup_logging(
         level=log_cfg.get("level", "INFO"),
@@ -187,44 +184,42 @@ def main() -> int:
     )
     logger = logging.getLogger("gromacs_agent.run")
 
-    # Validate input PDB
     pdb_path = Path(args.pdb_file)
     if not pdb_path.exists():
         logger.error("Input PDB file not found: %s", pdb_path)
         return 1
 
-    # Apply CLI overrides to config
     overrides: dict = {}
-    if args.ff:
-        overrides["ff"] = args.ff
-    if args.water:
-        overrides["water"] = args.water
-    if args.threads:
-        overrides["threads"] = args.threads
-    if args.gpu:
-        overrides["gpu"] = True
+    if args.ff:      overrides["ff"]      = args.ff
+    if args.water:   overrides["water"]   = args.water
+    if args.threads: overrides["threads"] = args.threads
+    if args.gpu:     overrides["gpu"]     = True
 
-    # Build task prompt
-    task_prompt = build_task_prompt(
-        pdb_file=str(pdb_path),
-        config=config,
-        resume=args.resume,
-        overrides=overrides,
-    )
-
-    if args.dry_run:
-        print("=" * 70)
-        print("DRY RUN — Task prompt that would be sent to agent:")
-        print("=" * 70)
-        print(task_prompt)
-        return 0
-
-    logger.info("Starting GROMACS agent pipeline for: %s", pdb_path)
-    logger.info("Resume mode: %s", args.resume)
-
-    # Build and run agent
     try:
-        agent = build_agent(config)
+        # build_agent now returns (agent, needs_prepend)
+        agent, needs_prepend = build_agent(config)
+
+        # Load system prompt text for optional prepend
+        from agent.orchestrator import load_system_prompt
+        system_prompt_text = load_system_prompt() if needs_prepend else ""
+
+        task_prompt = build_task_prompt(
+            pdb_file=str(pdb_path),
+            config=config,
+            resume=args.resume,
+            overrides=overrides,
+            prepend_system_prompt=needs_prepend,
+            system_prompt=system_prompt_text,
+        )
+
+        if args.dry_run:
+            print("=" * 70)
+            print("DRY RUN — Task prompt:")
+            print("=" * 70)
+            print(task_prompt)
+            return 0
+
+        logger.info("Starting pipeline for: %s", pdb_path)
         result = agent.run(task_prompt)
 
         print("\n" + "=" * 70)
@@ -234,14 +229,11 @@ def main() -> int:
         return 0
 
     except KeyboardInterrupt:
-        logger.warning("Pipeline interrupted by user.")
-        logger.info(
-            "Run with --resume to continue from last completed step."
-        )
+        logger.warning("Interrupted. Run with --resume to continue.")
         return 130
 
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Pipeline failed with unexpected error: %s", exc)
+    except Exception as exc:
+        logger.exception("Pipeline failed: %s", exc)
         return 1
 
 
