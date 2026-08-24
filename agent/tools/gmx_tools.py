@@ -47,10 +47,12 @@ class Pdb2GmxTool(GMXBaseTool):
         "force_field": {
             "type": "string",
             "description": "GROMACS force field name, e.g. 'amber99sb-ildn'.",
+            "nullable": True,
         },
         "water_model": {
             "type": "string",
             "description": "Water model, e.g. 'tip3p', 'tip4p', 'spc'.",
+            "nullable": True,
         },
         "output_gro": {
             "type": "string",
