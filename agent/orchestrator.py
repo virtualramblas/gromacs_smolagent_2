@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+from copy import deepcopy
 from pathlib import Path
 
 import yaml
@@ -34,80 +35,66 @@ def load_system_prompt(
     return path.read_text()
 
 
-def _inspect_code_agent() -> dict:
+def _get_prompt_templates(system_prompt: str) -> dict:
     """
-    Introspect CodeAgent at runtime.
-    Returns a dict of findings used to adapt instantiation.
+    Build a complete prompt_templates dict for smolagents 1.26.0.
+
+    Strategy:
+        1. Deep-copy the default templates from CodeAgent class attribute
+        2. Replace only the 'system_prompt' key with our custom prompt
+        3. Return the complete dict — all required keys present
+
+    This avoids the AssertionError about missing template keys while
+    still injecting our domain-specific system prompt.
     """
-    init_params = set(inspect.signature(CodeAgent.__init__).parameters.keys())
+    # CodeAgent.prompt_templates is a class-level dict of all defaults
+    if not hasattr(CodeAgent, "prompt_templates"):
+        logger.warning(
+            "CodeAgent has no 'prompt_templates' class attribute. "
+            "Returning minimal template dict."
+        )
+        return {"system_prompt": system_prompt}
 
-    # Check for prompt-related attributes on the class itself
-    class_attrs = set(dir(CodeAgent))
+    # Deep copy so we never mutate the class-level default
+    templates = deepcopy(CodeAgent.prompt_templates)
 
-    findings = {
-        "init_params":          init_params,
-        "has_system_prompt":    "system_prompt"    in init_params,
-        "has_prompt_templates": "prompt_templates" in init_params,
-        "has_planning_interval":"planning_interval" in init_params,
-        "has_prompt_attr":      "prompt_template"  in class_attrs,
-        "has_system_prompt_attr": "system_prompt"  in class_attrs,
-    }
-
-    logger.info("CodeAgent introspection: %s", findings)
-    return findings
-
-
-def _inject_system_prompt(
-    agent: CodeAgent,
-    system_prompt: str,
-    findings: dict,
-) -> None:
-    """
-    Inject the system prompt into an already-constructed CodeAgent.
-    Tries all known injection points for smolagents 1.x compatibility.
-    """
-
-    # Strategy 1: Direct attribute assignment (1.26.0 pattern)
-    # In 1.26.0, CodeAgent stores the system prompt as an attribute
-    # that is read at agent.run() time
-    if hasattr(agent, "system_prompt"):
-        agent.system_prompt = system_prompt
-        logger.info("System prompt injected via agent.system_prompt attribute.")
-        return
-
-    # Strategy 2: prompt_templates dict attribute
-    if hasattr(agent, "prompt_templates"):
-        if isinstance(agent.prompt_templates, dict):
-            agent.prompt_templates["system_prompt"] = system_prompt
-        else:
-            agent.prompt_templates = {"system_prompt": system_prompt}
-        logger.info("System prompt injected via agent.prompt_templates attribute.")
-        return
-
-    # Strategy 3: prompt_template (singular) attribute
-    if hasattr(agent, "prompt_template"):
-        agent.prompt_template = system_prompt
-        logger.info("System prompt injected via agent.prompt_template attribute.")
-        return
-
-    # Strategy 4: No known injection point found — log warning
-    # Task-level prepend will be used as fallback in run.py
-    logger.warning(
-        "No known system prompt injection point found on CodeAgent instance. "
-        "System prompt will be prepended to the task string at agent.run() time. "
-        "Agent attributes available: %s",
-        [a for a in dir(agent) if "prompt" in a.lower()],
+    logger.info(
+        "Default prompt_templates keys found: %s", list(templates.keys())
     )
+
+    # Replace only the system_prompt slot
+    if "system_prompt" in templates:
+        templates["system_prompt"] = system_prompt
+        logger.info("Replaced 'system_prompt' in prompt_templates.")
+    else:
+        # Key name may differ in some versions — log all keys for diagnosis
+        logger.warning(
+            "Key 'system_prompt' not found in default templates. "
+            "Available keys: %s. Inserting anyway.",
+            list(templates.keys()),
+        )
+        templates["system_prompt"] = system_prompt
+
+    return templates
+
+
+def _inspect_code_agent() -> dict:
+    """Introspect CodeAgent.__init__ parameters at runtime."""
+    init_params = set(inspect.signature(CodeAgent.__init__).parameters.keys())
+    return {
+        "init_params":           init_params,
+        "has_system_prompt":     "system_prompt"     in init_params,
+        "has_prompt_templates":  "prompt_templates"  in init_params,
+        "has_planning_interval": "planning_interval" in init_params,
+    }
 
 
 def build_agent(config: dict) -> tuple[CodeAgent, bool]:
     """
-    Instantiate the CodeAgent for smolagents 1.26.0.
+    Instantiate CodeAgent for smolagents 1.26.0.
 
     Returns:
         (agent, needs_prompt_prepend)
-        needs_prompt_prepend: True if system prompt must be prepended
-        to the task string in run.py (last-resort fallback).
     """
     llm_cfg  = config["llm"]
     pipe_cfg = config["pipeline"]
@@ -121,13 +108,14 @@ def build_agent(config: dict) -> tuple[CodeAgent, bool]:
 
     system_prompt = load_system_prompt()
     findings      = _inspect_code_agent()
+    logger.info("CodeAgent init params: %s", findings["init_params"])
 
     # ------------------------------------------------------------------
-    # Build constructor kwargs — only include what this version supports
+    # Base constructor kwargs
     # ------------------------------------------------------------------
     agent_kwargs: dict = {
-        "tools": tools,
-        "model": model,
+        "tools":   tools,
+        "model":   model,
         "max_steps": 60,
         "additional_authorized_imports": [
             "pathlib", "json", "re", "statistics",
@@ -136,19 +124,27 @@ def build_agent(config: dict) -> tuple[CodeAgent, bool]:
         ],
     }
 
-    # planning_interval — only if supported
     if findings["has_planning_interval"]:
         agent_kwargs["planning_interval"] = 5
 
-    # system_prompt as constructor kwarg — only if supported
-    # (older API, kept for backwards compat)
+    # ------------------------------------------------------------------
+    # System prompt injection strategy
+    # ------------------------------------------------------------------
+    needs_prepend = False
+
     if findings["has_system_prompt"]:
+        # Older API — direct kwarg
         agent_kwargs["system_prompt"] = system_prompt
-        logger.info("Passing system_prompt as constructor kwarg.")
+        logger.info("Strategy: system_prompt constructor kwarg.")
 
     elif findings["has_prompt_templates"]:
-        agent_kwargs["prompt_templates"] = {"system_prompt": system_prompt}
-        logger.info("Passing system_prompt via prompt_templates constructor kwarg.")
+        # 1.26.0 API — must pass complete templates dict
+        agent_kwargs["prompt_templates"] = _get_prompt_templates(system_prompt)
+        logger.info("Strategy: prompt_templates constructor kwarg (complete dict).")
+
+    else:
+        # No constructor-level injection — will try post-construction
+        logger.info("Strategy: post-construction attribute injection.")
 
     # ------------------------------------------------------------------
     # Construct agent
@@ -156,25 +152,30 @@ def build_agent(config: dict) -> tuple[CodeAgent, bool]:
     agent = CodeAgent(**agent_kwargs)
 
     # ------------------------------------------------------------------
-    # Post-construction prompt injection
-    # (handles 1.26.0 where prompt is set as instance attribute)
+    # Post-construction injection (fallback for unknown API shapes)
     # ------------------------------------------------------------------
-    needs_prepend = False
-
     if not findings["has_system_prompt"] and not findings["has_prompt_templates"]:
-        _inject_system_prompt(agent, system_prompt, findings)
+        injected = False
 
-        # Check if injection succeeded
-        injected = (
-            (hasattr(agent, "system_prompt")    and agent.system_prompt    == system_prompt) or
-            (hasattr(agent, "prompt_template")  and agent.prompt_template  == system_prompt) or
-            (hasattr(agent, "prompt_templates") and isinstance(agent.prompt_templates, dict)
-             and agent.prompt_templates.get("system_prompt") == system_prompt)
-        )
+        for attr in ("system_prompt", "prompt_template", "prompt_templates"):
+            if hasattr(agent, attr):
+                current = getattr(agent, attr)
+                if isinstance(current, dict):
+                    current["system_prompt"] = system_prompt
+                else:
+                    setattr(agent, attr, system_prompt)
+                logger.info(
+                    "Post-construction injection via agent.%s", attr
+                )
+                injected = True
+                break
+
         if not injected:
+            prompt_attrs = [a for a in dir(agent) if "prompt" in a.lower()]
             logger.warning(
-                "System prompt injection could not be verified. "
-                "Falling back to task-level prepend."
+                "No injection point found. Prompt-related attrs: %s. "
+                "Falling back to task-level prepend.",
+                prompt_attrs,
             )
             needs_prepend = True
 
