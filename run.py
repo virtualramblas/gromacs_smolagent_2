@@ -196,20 +196,15 @@ def main() -> int:
     if args.gpu:     overrides["gpu"]     = True
 
     try:
-        # build_agent now returns (agent, needs_prepend)
-        agent, needs_prepend = build_agent(config)
-
-        # Load system prompt text for optional prepend
-        from agent.orchestrator import load_system_prompt
-        system_prompt_text = load_system_prompt() if needs_prepend else ""
+        agent, _ = build_agent(config)          # needs_prepend always False
 
         task_prompt = build_task_prompt(
             pdb_file=str(pdb_path),
             config=config,
             resume=args.resume,
             overrides=overrides,
-            prepend_system_prompt=needs_prepend,
-            system_prompt=system_prompt_text,
+            # prepend_system_prompt and system_prompt args
+            # can be removed from build_task_prompt entirely
         )
 
         if args.dry_run:
@@ -235,7 +230,6 @@ def main() -> int:
     except Exception as exc:
         logger.exception("Pipeline failed: %s", exc)
         return 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
