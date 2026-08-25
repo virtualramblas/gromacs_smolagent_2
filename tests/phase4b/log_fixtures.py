@@ -9,6 +9,9 @@ Kept as module-level strings so tests stay readable.
 # ---------------------------------------------------------------------------
 
 EM_CONVERGED_LOG = """\
+integrator              = steep
+nsteps                  = 5000
+
                       Step           Time
                          0        0.00000
 
@@ -22,8 +25,6 @@ EM_CONVERGED_LOG = """\
 Steepest Descents converged to Fmax < 1000 in 847 steps
 Potential Energy  = -4.56789e+05
 Maximum force     =  9.87654e+02
-
-GROMACS reminds you: "Keep computing!" 
 
 Performance:
    Mnbf/s    GFlops  ns/day   hour/ns
