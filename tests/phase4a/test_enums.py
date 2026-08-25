@@ -142,20 +142,23 @@ class TestDiagnosisCode:
 
 class TestSeverity:
 
-    _EXPECTED = {"OK", "RECOVERABLE", "ASSISTED", "FATAL"}
+    _EXPECTED = {
+        "OK",
+        "RECOVERABLE",
+        "ASSISTED",
+        "FATAL",
+        "NEEDS_HUMAN_REVIEW",    
+    }
 
     def test_all_expected_severities_present(self):
         actual = {m.value for m in Severity}
         assert self._EXPECTED == actual
 
     def test_severity_ordering_concept(self):
-        """
-        OK < RECOVERABLE < ASSISTED < FATAL in terms of intervention needed.
-        Verify the enum members exist so ordering logic elsewhere is safe.
-        """
-        assert Severity.OK         != Severity.RECOVERABLE
-        assert Severity.RECOVERABLE != Severity.ASSISTED
-        assert Severity.ASSISTED   != Severity.FATAL
+        assert Severity.OK              != Severity.RECOVERABLE
+        assert Severity.RECOVERABLE     != Severity.ASSISTED
+        assert Severity.ASSISTED        != Severity.FATAL
+        assert Severity.FATAL           != Severity.NEEDS_HUMAN_REVIEW  
 
     def test_members_are_strings(self):
         for member in Severity:

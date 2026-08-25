@@ -68,10 +68,11 @@ class DiagnosisCode(str, Enum):
 
 
 class Severity(str, Enum):
-    OK            = "OK"
-    RECOVERABLE   = "RECOVERABLE"    # agent can fix automatically
-    ASSISTED      = "ASSISTED"       # agent proposes fix, user confirms
-    FATAL         = "FATAL"          # cannot continue, escalate to user
+    OK                  = "OK"
+    RECOVERABLE         = "RECOVERABLE"
+    ASSISTED            = "ASSISTED"
+    FATAL               = "FATAL"
+    NEEDS_HUMAN_REVIEW  = "NEEDS_HUMAN_REVIEW"
 
 
 class RecoveryAction(str, Enum):
