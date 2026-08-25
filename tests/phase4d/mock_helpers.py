@@ -1,17 +1,17 @@
-"""
-Helpers for mocking run_gmx_command and filesystem side-effects.
-
-Design principle:
-    Each mock_* function returns a callable that:
-        1. Optionally creates expected output files (simulating GMX writing them)
-        2. Returns (returncode, stdout, stderr)
-    This lets us test both the happy path and failure modes cleanly.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Callable
+
+
+# ---------------------------------------------------------------------------
+# Correct patch targets — one per tool module
+# ---------------------------------------------------------------------------
+
+# Use these constants in tests instead of hardcoding the module path
+GMX_TOOLS_MODULE      = "agent.tools.gmx_tools.run_gmx_command"
+FILE_TOOLS_MODULE     = "agent.tools.file_tools.run_gmx_command"
+ANALYSIS_TOOLS_MODULE = "agent.tools.analysis_tools.run_gmx_command"
 
 
 # ---------------------------------------------------------------------------

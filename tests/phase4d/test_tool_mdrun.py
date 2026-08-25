@@ -1,8 +1,3 @@
-"""
-4D-6: MdrunTool — run label, thread count, GPU flag,
-checkpoint continuation, output file set.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,9 +6,12 @@ import pytest
 
 from agent.tools.gmx_tools import MdrunTool
 
-from .mock_helpers import make_failing_mock, make_gmx_mock, make_timeout_mock
-
-MODULE = "agent.tools.base.run_gmx_command"
+from .mock_helpers import (
+    GMX_TOOLS_MODULE,
+    make_failing_mock,
+    make_gmx_mock,
+    make_timeout_mock,
+)
 
 
 @pytest.fixture
@@ -24,7 +22,6 @@ def tpr_file(tmp_path) -> Path:
 
 
 def _make_mdrun_outputs(work_dir: Path, label: str) -> list[Path]:
-    """Create the minimum output files mdrun is expected to produce."""
     return [
         work_dir / f"{label}.edr",
         work_dir / f"{label}.log",
@@ -36,7 +33,7 @@ class TestMdrunTool:
     def test_success_with_default_label(self, tmp_path, tpr_file, monkeypatch):
         tool = MdrunTool(work_dir=tmp_path)
         monkeypatch.setattr(
-            MODULE,
+            GMX_TOOLS_MODULE,
             make_gmx_mock(create_files=_make_mdrun_outputs(tmp_path, "md")),
         )
         result = tool.forward(input_tpr=str(tpr_file))
@@ -52,7 +49,7 @@ class TestMdrunTool:
                 f.write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(input_tpr=str(tpr_file), run_label="em")
         assert "-deffnm" in captured["args"]
         assert "em"      in captured["args"]
@@ -67,7 +64,7 @@ class TestMdrunTool:
                 f.write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(input_tpr=str(tpr_file), n_threads=8)
         assert "-ntomp" in captured["args"]
         idx = captured["args"].index("-ntomp")
@@ -83,7 +80,7 @@ class TestMdrunTool:
                 f.write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(input_tpr=str(tpr_file), use_gpu=True)
         assert "-nb"  in captured["args"]
         assert "gpu"  in captured["args"]
@@ -98,7 +95,7 @@ class TestMdrunTool:
                 f.write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(input_tpr=str(tpr_file), use_gpu=False)
         assert "-nb" not in captured["args"]
 
@@ -116,7 +113,7 @@ class TestMdrunTool:
                 f.write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(input_tpr=str(tpr_file), checkpoint_file=str(cpt))
         assert "-cpi"    in captured["args"]
         assert str(cpt)  in captured["args"]
@@ -131,7 +128,7 @@ class TestMdrunTool:
                 f.write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(
             input_tpr=str(tpr_file),
             extra_flags=["-v", "-pin", "on"],
@@ -141,28 +138,24 @@ class TestMdrunTool:
         assert "on"   in captured["args"]
 
     def test_missing_edr_means_failure(self, tmp_path, tpr_file, monkeypatch):
-        """edr and log are minimum success indicators — missing edr → failure."""
         tool = MdrunTool(work_dir=tmp_path)
-        # Create only log, not edr
         monkeypatch.setattr(
-            MODULE,
+            GMX_TOOLS_MODULE,
             make_gmx_mock(create_files=[tmp_path / "md.log"]),
         )
         result = tool.forward(input_tpr=str(tpr_file))
         assert "SUCCESS: False" in result
 
     def test_missing_log_means_failure(self, tmp_path, tpr_file, monkeypatch):
-        """Missing log → failure."""
         tool = MdrunTool(work_dir=tmp_path)
         monkeypatch.setattr(
-            MODULE,
+            GMX_TOOLS_MODULE,
             make_gmx_mock(create_files=[tmp_path / "md.edr"]),
         )
         result = tool.forward(input_tpr=str(tpr_file))
         assert "SUCCESS: False" in result
 
     def test_all_output_files_reported(self, tmp_path, tpr_file, monkeypatch):
-        """All expected output files should appear in the result string."""
         tool  = MdrunTool(work_dir=tmp_path)
         label = "nvt"
         all_outputs = [
@@ -172,22 +165,24 @@ class TestMdrunTool:
             tmp_path / f"{label}.cpt",
             tmp_path / f"{label}.gro",
         ]
-        monkeypatch.setattr(MODULE, make_gmx_mock(create_files=all_outputs))
+        monkeypatch.setattr(GMX_TOOLS_MODULE, make_gmx_mock(create_files=all_outputs))
         result = tool.forward(input_tpr=str(tpr_file), run_label=label)
         for ext in ("edr", "log", "xtc", "cpt", "gro"):
             assert f"{label}.{ext}" in result
 
     def test_timeout_handled_gracefully(self, tmp_path, tpr_file, monkeypatch):
         tool = MdrunTool(work_dir=tmp_path)
-        monkeypatch.setattr(MODULE, make_timeout_mock())
+        monkeypatch.setattr(GMX_TOOLS_MODULE, make_timeout_mock())
         result = tool.forward(input_tpr=str(tpr_file))
         assert "SUCCESS: False" in result
 
     @pytest.mark.parametrize("label", ["em", "nvt", "npt", "md"])
-    def test_standard_run_labels_accepted(self, tmp_path, tpr_file, monkeypatch, label):
+    def test_standard_run_labels_accepted(
+        self, tmp_path, tpr_file, monkeypatch, label
+    ):
         tool = MdrunTool(work_dir=tmp_path)
         monkeypatch.setattr(
-            MODULE,
+            GMX_TOOLS_MODULE,
             make_gmx_mock(create_files=_make_mdrun_outputs(tmp_path, label)),
         )
         result = tool.forward(input_tpr=str(tpr_file), run_label=label)

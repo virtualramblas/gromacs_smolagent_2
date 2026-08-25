@@ -1,7 +1,3 @@
-"""
-4D-4: SolvateTool — topology update, solvent model, water count extraction.
-"""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,9 +6,11 @@ import pytest
 
 from agent.tools.gmx_tools import SolvateTool
 
-from .mock_helpers import make_failing_mock, make_gmx_mock
-
-MODULE = "agent.tools.base.run_gmx_command"
+from .mock_helpers import (
+    GMX_TOOLS_MODULE,
+    make_failing_mock,
+    make_gmx_mock,
+)
 
 
 @pytest.fixture
@@ -30,13 +28,10 @@ class TestSolvateTool:
         gro, top = solvate_inputs
         tool     = SolvateTool(work_dir=tmp_path)
         out_gro  = tmp_path / "conf_solv.gro"
-        monkeypatch.setattr(MODULE, make_gmx_mock(create_files=[out_gro]))
-        result = tool.forward(
-            input_gro=str(gro),
-            topology_top=str(top),
-        )
-        assert "SUCCESS: True"  in result
-        assert "conf_solv.gro"  in result
+        monkeypatch.setattr(GMX_TOOLS_MODULE, make_gmx_mock(create_files=[out_gro]))
+        result = tool.forward(input_gro=str(gro), topology_top=str(top))
+        assert "SUCCESS: True" in result
+        assert "conf_solv.gro" in result
 
     def test_topology_path_in_command(self, tmp_path, solvate_inputs, monkeypatch):
         gro, top = solvate_inputs
@@ -48,10 +43,10 @@ class TestSolvateTool:
             (tmp_path / "conf_solv.gro").write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(input_gro=str(gro), topology_top=str(top))
-        assert "-p"       in captured["args"]
-        assert str(top)   in captured["args"]
+        assert "-p"     in captured["args"]
+        assert str(top) in captured["args"]
 
     def test_solvent_model_passed_to_command(self, tmp_path, solvate_inputs, monkeypatch):
         gro, top = solvate_inputs
@@ -63,7 +58,7 @@ class TestSolvateTool:
             (tmp_path / "conf_solv.gro").write_text("mock")
             return 0, "", ""
 
-        monkeypatch.setattr(MODULE, _capture)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _capture)
         tool.forward(
             input_gro=str(gro),
             topology_top=str(top),
@@ -77,7 +72,7 @@ class TestSolvateTool:
     ):
         gro, top = solvate_inputs
         tool     = SolvateTool(work_dir=tmp_path)
-        monkeypatch.setattr(MODULE, make_gmx_mock(create_files=[]))
+        monkeypatch.setattr(GMX_TOOLS_MODULE, make_gmx_mock(create_files=[]))
         result = tool.forward(input_gro=str(gro), topology_top=str(top))
         assert "SUCCESS: False" in result
 
@@ -92,7 +87,7 @@ class TestSolvateTool:
             out_gro.write_text("mock")
             return 0, "Number of solvent molecules: 12345", ""
 
-        monkeypatch.setattr(MODULE, _mock)
+        monkeypatch.setattr(GMX_TOOLS_MODULE, _mock)
         result = tool.forward(input_gro=str(gro), topology_top=str(top))
         assert "12345" in result or "solvent" in result.lower()
 
@@ -100,7 +95,7 @@ class TestSolvateTool:
         gro, top = solvate_inputs
         tool     = SolvateTool(work_dir=tmp_path)
         monkeypatch.setattr(
-            MODULE,
+            GMX_TOOLS_MODULE,
             make_failing_mock(stderr="Fatal error: box too small"),
         )
         result = tool.forward(input_gro=str(gro), topology_top=str(top))
