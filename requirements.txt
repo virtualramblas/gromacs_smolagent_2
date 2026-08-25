@@ -1,3 +1,7 @@
 smolagents==1.26.0
 litellm==1.97.0
 PyYAML==6.0.3
+
+# Testing only
+pytest==8.4.2
+pytest-cov==7.1.0
