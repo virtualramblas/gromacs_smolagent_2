@@ -148,10 +148,18 @@ class LogParser:
             if integrator in ("steep", "cg", "l-bfgs"):
                 return SimulationPhase.ENERGY_MIN
             if integrator in ("md", "md-vv", "sd", "bd"):
-                return cls._phase_from_title(text)
+                # md-family integrator confirmed — title refines the phase,
+                # defaulting to PRODUCTION_MD if no title keyword found
+                return cls._phase_from_title(
+                    text,
+                    default=SimulationPhase.PRODUCTION_MD,  # ← md confirmed
+                )
 
-        # Tier 2: title line only (no integrator found)
-        title_phase = cls._phase_from_title(text)
+        # Tier 2: title keywords only — no integrator line found
+        title_phase = cls._phase_from_title(
+            text,
+            default=SimulationPhase.UNKNOWN,                # ← no integrator
+        )
         if title_phase != SimulationPhase.UNKNOWN:
             return title_phase
 
@@ -163,12 +171,27 @@ class LogParser:
 
         return SimulationPhase.UNKNOWN
 
+
     @classmethod
-    def _phase_from_title(cls, text: str) -> SimulationPhase:
-        """Extract phase from title line keywords."""
+    def _phase_from_title(
+        cls,
+        text: str,
+        default: SimulationPhase = SimulationPhase.UNKNOWN,
+    ) -> SimulationPhase:
+        """
+        Extract phase from title line keywords.
+
+        Args:
+            text:    Full log text.
+            default: Phase to return when no title line is found
+                    OR when title contains no recognised keyword.
+                    Callers pass PRODUCTION_MD when an md-family
+                    integrator is already confirmed, UNKNOWN otherwise.
+        """
         title_m = cls._P_TITLE.search(text)
         if not title_m:
-            return SimulationPhase.PRODUCTION_MD  # default for md integrator
+            return default                  # ← caller decides the fallback
+
         title = title_m.group(1).lower()
         if "nvt" in title:
             return SimulationPhase.NVT_EQUIL
@@ -176,7 +199,8 @@ class LogParser:
             return SimulationPhase.NPT_EQUIL
         if "prod" in title or "md" in title:
             return SimulationPhase.PRODUCTION_MD
-        return SimulationPhase.UNKNOWN
+
+        return default                      # ← title found but no keyword matched
 
     # ------------------------------------------------------------------
     # Value extraction helpers
