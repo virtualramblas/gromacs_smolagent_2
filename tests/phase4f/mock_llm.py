@@ -1,26 +1,23 @@
 """
-Mock LLM for SmolAgent 1.26.0 integration tests.
+Mock LLM conforming to the smolagents 1.26.0 Model interface.
+
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 
-@dataclass
-class MockMessage:
-    """Minimal message object SmolAgent's CodeAgent can consume."""
-    content: str
-    tool_calls: None = None
-
+# ---------------------------------------------------------------------------
+# Detect code block tags
+# ---------------------------------------------------------------------------
 
 def _detect_code_block_tags() -> tuple[str, str]:
     """
-    Detect the code block open/close tags expected by the installed
-    CodeAgent version. Falls back to standard markdown if not found.
-
-    Returns:
-        (open_tag, close_tag) e.g. ("```py", "```")
+    Detect the code block open/close tags expected by CodeAgent.
+    CodeAgent has no code_block_tags class attribute in 1.26.0,
+    so we fall back to the standard markdown python block.
     """
     try:
         from smolagents import CodeAgent
@@ -31,48 +28,117 @@ def _detect_code_block_tags() -> tuple[str, str]:
             return tags, "```"
     except Exception:
         pass
-    # Default: standard markdown python block
+    # Default confirmed by smolagents 1.26.0 source
     return "```py", "```"
 
 
-# Detect once at module load time
 _OPEN_TAG, _CLOSE_TAG = _detect_code_block_tags()
 
 
 def _wrap_in_code_block(code: str) -> str:
-    """
-    Wrap a code string in the code block tags expected by CodeAgent.
-    Does not double-wrap if tags are already present.
-    """
+    """Wrap code in the tags CodeAgent expects for parsing."""
     if _OPEN_TAG in code or "```" in code:
         return code
     return f"{_OPEN_TAG}\n{code}\n{_CLOSE_TAG}"
 
 
+# ---------------------------------------------------------------------------
+# Minimal ChatMessage-compatible return type
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MockTokenUsage:
+    """Minimal token usage object — CodeAgent reads this for monitoring."""
+    input_tokens:  int = 10
+    output_tokens: int = 10
+
+
+@dataclass
+class MockChatMessage:
+    """
+    Return type of generate().
+    Must have .content, .tool_calls, and .token_usage.
+    CodeAgent accesses all three after every model call.
+    """
+    content:     str
+    tool_calls:  None          = None
+    token_usage: MockTokenUsage = field(
+        default_factory=MockTokenUsage
+    )
+    role: str = "assistant"
+
+
+# ---------------------------------------------------------------------------
+# ScriptedLLM
+# ---------------------------------------------------------------------------
+
 class ScriptedLLM:
     """
     A mock LLM that returns pre-scripted responses in order.
-    Responses are wrapped in the correct code block tags for
-    the installed SmolAgent version.
+
+    Implements the smolagents 1.26.0 model interface:
+        generate(messages, stop_sequences=None, grammar=None, **kwargs)
+            → MockChatMessage
+
+    Does NOT subclass smolagents.Model — subclassing caused __init__
+    signature conflicts. Plain duck-typing is sufficient because
+    CodeAgent only calls .generate() and reads .last_input_token_count
+    / .last_output_token_count on the model object.
     """
 
     def __init__(self, responses: list[str]):
-        self._responses = list(responses)
-        self._index     = 0
-        self.call_log: list[str] = []
+        self._responses  = list(responses)
+        self._index      = 0
+        self.call_log:   list[str] = []
 
-    def __call__(self, messages: list, **kwargs) -> MockMessage:
+        # Attributes CodeAgent reads for token monitoring
+        self.last_input_token_count  = 0
+        self.last_output_token_count = 0
+
+    def generate(
+        self,
+        messages: list,
+        stop_sequences: list[str] | None = None,
+        grammar: Any = None,
+        **kwargs,
+    ) -> MockChatMessage:
+        """
+        Called by CodeAgent._step_stream() on every agent step.
+        Returns the next scripted response wrapped in code block tags.
+        """
         if self._index >= len(self._responses):
-            content = _wrap_in_code_block(
-                'final_answer("No more scripted responses.")'
-            )
+            raw = 'final_answer("No more scripted responses.")'
         else:
-            raw     = self._responses[self._index]
-            content = _wrap_in_code_block(raw)
+            raw          = self._responses[self._index]
             self._index += 1
 
+        content = _wrap_in_code_block(raw)
         self.call_log.append(content)
-        return MockMessage(content=content)
+
+        # Update token counts
+        self.last_input_token_count  = sum(
+            len(str(m)) for m in messages
+        ) // 4
+        self.last_output_token_count = len(content) // 4
+
+        return MockChatMessage(content=content)
+
+    # ------------------------------------------------------------------
+    # Compatibility shim — some code paths may still call __call__
+    # ------------------------------------------------------------------
+    def __call__(
+        self,
+        messages: list,
+        stop_sequences: list[str] | None = None,
+        grammar: Any = None,
+        **kwargs,
+    ) -> MockChatMessage:
+        return self.generate(
+            messages,
+            stop_sequences=stop_sequences,
+            grammar=grammar,
+            **kwargs,
+        )
 
     @property
     def responses_exhausted(self) -> bool:
@@ -83,20 +149,37 @@ class ScriptedLLM:
         self.call_log.clear()
 
 
+# ---------------------------------------------------------------------------
+# CapturingLLM
+# ---------------------------------------------------------------------------
+
 class CapturingLLM:
     """
     A mock LLM that captures all messages sent to it.
+    Implements the same generate() interface as ScriptedLLM.
     """
 
     def __init__(self, default_response: str = 'final_answer("done")'):
         self.default_response   = default_response
         self.received_messages: list[list] = []
+        self.last_input_token_count  = 0
+        self.last_output_token_count = 0
 
-    def __call__(self, messages: list, **kwargs) -> MockMessage:
+    def generate(
+        self,
+        messages: list,
+        stop_sequences: list[str] | None = None,
+        grammar: Any = None,
+        **kwargs,
+    ) -> MockChatMessage:
         self.received_messages.append(messages)
-        return MockMessage(
-            content=_wrap_in_code_block(self.default_response)
-        )
+        content = _wrap_in_code_block(self.default_response)
+        self.last_input_token_count  = 10
+        self.last_output_token_count = len(content) // 4
+        return MockChatMessage(content=content)
+
+    def __call__(self, messages: list, **kwargs) -> MockChatMessage:
+        return self.generate(messages, **kwargs)
 
     @property
     def last_messages(self) -> list:

@@ -126,7 +126,6 @@ class TestToolRegistry:
         assert tool.name == expected_name
 
 class TestCodeBlockTags:
-    """Verify the mock LLM uses the correct code block tags."""
 
     def test_detected_tags_are_strings(self):
         from tests.phase4f.mock_llm import _OPEN_TAG, _CLOSE_TAG
@@ -147,14 +146,38 @@ class TestCodeBlockTags:
         result = _wrap_in_code_block(already_wrapped)
         assert result.count(_OPEN_TAG) == 1
 
-    def test_scripted_llm_wraps_responses(self):
+    def test_scripted_llm_has_generate_method(self):
+        """Verify ScriptedLLM implements the 1.26.0 interface."""
+        from tests.phase4f.mock_llm import ScriptedLLM
+        llm = ScriptedLLM(['final_answer("done")'])
+        assert hasattr(llm, "generate"), (
+            "ScriptedLLM must implement generate() for smolagents 1.26.0"
+        )
+
+    def test_scripted_llm_generate_returns_chat_message(self):
+        from tests.phase4f.mock_llm import ScriptedLLM
+        llm = ScriptedLLM(['final_answer("done")'])
+        msg = llm.generate([])
+        assert hasattr(msg, "content")
+        assert hasattr(msg, "tool_calls")
+        assert hasattr(msg, "token_usage")
+
+    def test_scripted_llm_generate_wraps_in_code_block(self):
         from tests.phase4f.mock_llm import ScriptedLLM, _OPEN_TAG
         llm = ScriptedLLM(['print("hello")'])
-        msg = llm([])
+        msg = llm.generate([])
         assert _OPEN_TAG in msg.content or "```" in msg.content
 
     def test_scripted_llm_fallback_when_exhausted(self):
         from tests.phase4f.mock_llm import ScriptedLLM
-        llm = ScriptedLLM([])          # no responses
-        msg = llm([])
+        llm = ScriptedLLM([])
+        msg = llm.generate([])
         assert "final_answer" in msg.content
+
+    def test_token_usage_has_expected_fields(self):
+        from tests.phase4f.mock_llm import ScriptedLLM
+        llm = ScriptedLLM(['final_answer("done")'])
+        msg = llm.generate([{"role": "user", "content": "test"}])
+        assert msg.token_usage is not None
+        assert hasattr(msg.token_usage, "input_tokens")
+        assert hasattr(msg.token_usage, "output_tokens")
