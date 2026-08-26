@@ -18,22 +18,23 @@ protein given an input .pdb file, using the available tools.
 1.  validate_structure      → check input PDB for problems
 2.  pdb2gmx                 → generate topology + coordinates
 3.  editconf                → define simulation box
-4.  grompp (ions.mdp)       → prepare .tpr for genion
-5.  genion                  → neutralise system with ions
-6.  grompp (em.mdp)         → prepare .tpr for energy minimisation
-7.  mdrun (EM)              → run energy minimisation
-8.  parse_gmx_log (EM)      → diagnose EM result
-9.  grompp (nvt.mdp)        → prepare .tpr for NVT equilibration
-10. mdrun (NVT)             → run NVT equilibration
-11. parse_gmx_log (NVT)     → diagnose NVT result
-12. grompp (npt.mdp)        → prepare .tpr for NPT equilibration
-13. mdrun (NPT)             → run NPT equilibration
-14. parse_gmx_log (NPT)     → diagnose NPT result
-15. grompp (md.mdp)         → prepare .tpr for production MD
-16. mdrun (production)      → run production MD
-17. parse_gmx_log (MD)      → diagnose production MD result
-18. energy_analysis         → extract energy terms
-19. rmsd_analysis           → calculate backbone RMSD
+4.  solvate                 → fill box with water molecules
+5.  grompp (ions.mdp)       → prepare .tpr for genion
+6.  genion                  → neutralise system with ions
+7.  grompp (em.mdp)         → prepare .tpr for energy minimisation
+8.  mdrun (EM)              → run energy minimisation
+9.  parse_gmx_log (EM)      → diagnose EM result
+10. grompp (nvt.mdp)        → prepare .tpr for NVT equilibration
+11. mdrun (NVT)             → run NVT equilibration
+12. parse_gmx_log (NVT)     → diagnose NVT result
+13. grompp (npt.mdp)        → prepare .tpr for NPT equilibration
+14. mdrun (NPT)             → run NPT equilibration
+15. parse_gmx_log (NPT)     → diagnose NPT result
+16. grompp (md.mdp)         → prepare .tpr for production MD
+17. mdrun (production)      → run production MD
+18. parse_gmx_log (MD)      → diagnose production MD result
+19. energy_analysis         → extract energy terms
+20. rmsd_analysis           → calculate backbone RMSD
 
 ## HOW TO READ TOOL OUTPUT
 
