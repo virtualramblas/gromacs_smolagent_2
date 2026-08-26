@@ -5,20 +5,20 @@ and resume interrupted runs.
 
 from __future__ import annotations
 
+import copy
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
 from smolagents import Tool
 
-logger_name = "gromacs_agent.state"
+logger = logging.getLogger("gromacs_agent.state")
 
 
 class PipelineStateTool(Tool):
     """
     Read and write the pipeline state JSON file.
-    The agent uses this to track completed steps, current files,
-    and any flags (e.g. em_converged) across the full workflow.
     """
 
     name = "pipeline_state"
@@ -45,12 +45,15 @@ class PipelineStateTool(Tool):
     }
     output_type = "string"
 
-    # Default state schema
+    # ------------------------------------------------------------------
+    # Default state schema — NOTE: use _fresh_default() everywhere,
+    # never mutate this directly (deep copy required for nested dicts)
+    # ------------------------------------------------------------------
     _DEFAULT_STATE = {
-        "input_pdb": None,
-        "work_dir": None,
+        "input_pdb":       None,
+        "work_dir":        None,
         "completed_steps": [],
-        "current_step": None,
+        "current_step":    None,
         "files": {
             "pdb":      None,
             "gro":      None,
@@ -67,67 +70,104 @@ class PipelineStateTool(Tool):
             "edr_md":   None,
             "xtc":      None,
         },
-        "em_converged": None,
-        "nvt_complete": None,
-        "npt_complete": None,
-        "md_complete":  None,
-        "warnings": [],
-        "errors": [],
-        "last_updated": None,
+        "em_converged":  None,
+        "nvt_complete":  None,
+        "npt_complete":  None,
+        "md_complete":   None,
+        "warnings":      [],
+        "errors":        [],
+        "last_updated":  None,
     }
 
     def __init__(self, state_file: str | Path = "pipeline_state.json"):
         super().__init__()
         self.state_file = Path(state_file)
 
+    def _fresh_default(self) -> dict:
+        """
+        Return a deep copy of _DEFAULT_STATE.
+        Deep copy is essential — the nested 'files' dict must be
+        independent between calls, otherwise mutations in one test
+        or pipeline run bleed into subsequent ones.
+        """
+        return copy.deepcopy(self._DEFAULT_STATE)
+
     def _load(self) -> dict:
-        if self.state_file.exists():
-            try:
-                return json.loads(self.state_file.read_text())
-            except json.JSONDecodeError:
-                # Corrupted file — return defaults rather than crashing
-                import logging
-                logging.getLogger("gromacs_agent.state").warning(
-                    "State file %s contains invalid JSON. "
-                    "Returning default state.",
-                    self.state_file,
-                )
-                return dict(self._DEFAULT_STATE)
-        return dict(self._DEFAULT_STATE)
+        """
+        Load state from disk.
+        Returns a fresh default if the file does not exist or
+        contains invalid JSON (graceful recovery).
+        Does NOT write to disk — read is non-destructive.
+        """
+        if not self.state_file.exists():
+            return self._fresh_default()
+        try:
+            return json.loads(self.state_file.read_text())
+        except json.JSONDecodeError:
+            logger.warning(
+                "State file %s contains invalid JSON. "
+                "Returning default state.",
+                self.state_file,
+            )
+            return self._fresh_default()
 
     def _save(self, state: dict) -> None:
-        from datetime import datetime, timezone
+        """
+        Persist state to disk as indented JSON.
+        Creates parent directories if needed.
+        """
         state["last_updated"] = datetime.now(timezone.utc).isoformat()
-        # Create parent directories if they don't exist  ← fix
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        self.state_file.write_text(json.dumps(state, indent=2, default=str))
+        self.state_file.write_text(
+            json.dumps(state, indent=2, default=str)
+        )
 
+    # ------------------------------------------------------------------
+    # Public SmolAgent entry point
+    # ------------------------------------------------------------------
 
     def forward(self, action: str, updates: dict | None = None) -> str:
         action = action.strip().lower()
 
+        # ---- RESET -------------------------------------------------------
         if action == "reset":
-            state = dict(self._DEFAULT_STATE)
+            state = self._fresh_default()
             self._save(state)
-            return "State reset to defaults.\n" + json.dumps(state, indent=2)
-
-        if action == "read":
-            state = self._load()
+            # Return pure JSON so callers can json.loads() the result
             return json.dumps(state, indent=2, default=str)
 
+        # ---- READ --------------------------------------------------------
+        if action == "read":
+            state = self._load()
+            # Persist on first read so the file always exists after read
+            self._save(state)
+            return json.dumps(state, indent=2, default=str)
+
+        # ---- UPDATE ------------------------------------------------------
         if action == "update":
             if not updates:
                 return "ERROR: 'update' action requires a non-empty 'updates' dict."
+
             state = self._load()
-            # Deep merge for nested 'files' dict
+
             for key, value in updates.items():
                 if key == "files" and isinstance(value, dict):
+                    # Deep merge: update individual file keys, not replace dict
                     state.setdefault("files", {}).update(value)
-                elif key in ("warnings", "errors") and isinstance(value, list):
-                    state.setdefault(key, []).extend(value)
-                else:
-                    state[key] = value
-            self._save(state)
-            return "State updated.\n" + json.dumps(state, indent=2, default=str)
 
-        return f"ERROR: Unknown action '{action}'. Use 'read', 'update', or 'reset'."
+                elif key in ("warnings", "errors") and isinstance(value, list):
+                    # Append semantics: extend existing list
+                    state.setdefault(key, []).extend(value)
+
+                else:
+                    # Scalar / list replacement
+                    state[key] = value
+
+            self._save(state)
+            return json.dumps(state, indent=2, default=str)
+
+        # ---- UNKNOWN -----------------------------------------------------
+        return (
+            f"ERROR: Unknown action '{action}'. "
+            "Use 'read', 'update', or 'reset'."
+        )

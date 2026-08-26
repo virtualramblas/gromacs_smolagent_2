@@ -136,6 +136,7 @@ class TestReadAction:
 class TestResetAction:
 
     def test_reset_returns_default_state(self, tool):
+        # forward() now returns pure JSON — json.loads() works directly
         result = json.loads(tool.forward(action="reset"))
         assert result["completed_steps"] == []
         assert result["input_pdb"]       is None
@@ -146,12 +147,9 @@ class TestResetAction:
         assert state_file.exists()
 
     def test_reset_clears_previous_updates(self, tool):
-        # Set some state
         tool.forward(action="update", updates={"input_pdb": "eiwit.pdb"})
         tool.forward(action="update", updates={"em_converged": True})
-        # Reset
         tool.forward(action="reset")
-        # Verify cleared
         result = json.loads(tool.forward(action="read"))
         assert result["input_pdb"]    is None
         assert result["em_converged"] is None
@@ -580,33 +578,26 @@ class TestEdgeCases:
 
     def test_unknown_action_returns_error(self, tool):
         result = tool.forward(action="fly_to_moon")
-        assert "ERROR" in result
-        assert "fly_to_moon" in result
+        assert "ERROR"        in result
+        assert "fly_to_moon"  in result
 
     def test_action_case_insensitive(self, tool):
-        """Actions should work regardless of case."""
         result = tool.forward(action="READ")
         state  = json.loads(result)
         assert isinstance(state, dict)
 
     def test_update_with_unknown_key_stored(self, tool):
-        """
-        Unknown keys in updates should be stored without error —
-        allows forward compatibility with new pipeline steps.
-        """
         tool.forward(action="update", updates={"new_future_key": "value"})
         result = json.loads(tool.forward(action="read"))
         assert result.get("new_future_key") == "value"
 
     def test_update_with_none_value_stored(self, tool):
-        """Explicitly setting a field to None should work."""
         tool.forward(action="update", updates={"input_pdb": "eiwit.pdb"})
         tool.forward(action="update", updates={"input_pdb": None})
         result = json.loads(tool.forward(action="read"))
         assert result["input_pdb"] is None
 
     def test_state_file_in_nonexistent_directory(self, tmp_path):
-        """State file in a not-yet-created directory should work."""
         nested_path = tmp_path / "a" / "b" / "c" / "state.json"
         tool        = PipelineStateTool(state_file=nested_path)
         tool.forward(action="update", updates={"input_pdb": "test.pdb"})
@@ -615,18 +606,10 @@ class TestEdgeCases:
         assert result["input_pdb"] == "test.pdb"
 
     def test_corrupted_state_file_handled(self, tool, state_file):
-        """
-        If the state file contains invalid JSON, the tool should
-        recover gracefully rather than crashing the agent.
-        """
-        # Write invalid JSON
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text("{ this is not valid json !!!")
-        # Should not raise — should return error or reset to defaults
         try:
             result = tool.forward(action="read")
-            # If it returns something, it should be an error message
-            # or a valid default state
             assert result is not None
             assert len(result) > 0
         except Exception as exc:
@@ -635,10 +618,9 @@ class TestEdgeCases:
             )
 
     def test_reset_fixes_corrupted_state(self, tool, state_file):
-        """Reset should always produce a valid state regardless of file content."""
         state_file.parent.mkdir(parents=True, exist_ok=True)
         state_file.write_text("CORRUPTED")
-        result = tool.forward(action="reset")
-        state  = json.loads(result)
-        assert state["completed_steps"] == []
-        assert state["input_pdb"]       is None
+        # reset() always produces valid state regardless of file content
+        result = json.loads(tool.forward(action="reset"))
+        assert result["completed_steps"] == []
+        assert result["input_pdb"]       is None
