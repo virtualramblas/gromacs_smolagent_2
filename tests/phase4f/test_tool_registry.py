@@ -124,3 +124,37 @@ class TestToolRegistry:
         else:
             tool = tool_class()
         assert tool.name == expected_name
+
+class TestCodeBlockTags:
+    """Verify the mock LLM uses the correct code block tags."""
+
+    def test_detected_tags_are_strings(self):
+        from tests.phase4f.mock_llm import _OPEN_TAG, _CLOSE_TAG
+        assert isinstance(_OPEN_TAG,  str)
+        assert isinstance(_CLOSE_TAG, str)
+        assert len(_OPEN_TAG)  > 0
+        assert len(_CLOSE_TAG) > 0
+
+    def test_wrap_produces_non_empty_string(self):
+        from tests.phase4f.mock_llm import _wrap_in_code_block
+        wrapped = _wrap_in_code_block('print("hello")')
+        assert 'print("hello")' in wrapped
+        assert len(wrapped) > len('print("hello")')
+
+    def test_wrap_does_not_double_wrap(self):
+        from tests.phase4f.mock_llm import _wrap_in_code_block, _OPEN_TAG
+        already_wrapped = f"{_OPEN_TAG}\nprint('hi')\n```"
+        result = _wrap_in_code_block(already_wrapped)
+        assert result.count(_OPEN_TAG) == 1
+
+    def test_scripted_llm_wraps_responses(self):
+        from tests.phase4f.mock_llm import ScriptedLLM, _OPEN_TAG
+        llm = ScriptedLLM(['print("hello")'])
+        msg = llm([])
+        assert _OPEN_TAG in msg.content or "```" in msg.content
+
+    def test_scripted_llm_fallback_when_exhausted(self):
+        from tests.phase4f.mock_llm import ScriptedLLM
+        llm = ScriptedLLM([])          # no responses
+        msg = llm([])
+        assert "final_answer" in msg.content

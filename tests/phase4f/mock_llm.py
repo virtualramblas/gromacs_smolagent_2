@@ -1,25 +1,10 @@
 """
-Mock LLM for SmolAgent integration tests.
-
-Design:
-    ScriptedLLM takes a list of responses. Each call to __call__()
-    returns the next response in the script. This lets us test
-    deterministic agent behaviour without a real LLM.
-
-    Responses are either:
-        - A code string the CodeAgent will execute
-        - A final_answer() call to terminate the agent loop
-
-SmolAgent's CodeAgent expects the model to return an object with:
-    - .content: str  (the raw model output)
-
-The CodeAgent parses code blocks from .content and executes them.
+Mock LLM for SmolAgent 1.26.0 integration tests.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 
 @dataclass
@@ -29,30 +14,61 @@ class MockMessage:
     tool_calls: None = None
 
 
+def _detect_code_block_tags() -> tuple[str, str]:
+    """
+    Detect the code block open/close tags expected by the installed
+    CodeAgent version. Falls back to standard markdown if not found.
+
+    Returns:
+        (open_tag, close_tag) e.g. ("```py", "```")
+    """
+    try:
+        from smolagents import CodeAgent
+        tags = getattr(CodeAgent, "code_block_tags", None)
+        if isinstance(tags, (list, tuple)) and len(tags) == 2:
+            return str(tags[0]), str(tags[1])
+        if isinstance(tags, str):
+            return tags, "```"
+    except Exception:
+        pass
+    # Default: standard markdown python block
+    return "```py", "```"
+
+
+# Detect once at module load time
+_OPEN_TAG, _CLOSE_TAG = _detect_code_block_tags()
+
+
+def _wrap_in_code_block(code: str) -> str:
+    """
+    Wrap a code string in the code block tags expected by CodeAgent.
+    Does not double-wrap if tags are already present.
+    """
+    if _OPEN_TAG in code or "```" in code:
+        return code
+    return f"{_OPEN_TAG}\n{code}\n{_CLOSE_TAG}"
+
+
 class ScriptedLLM:
     """
     A mock LLM that returns pre-scripted responses in order.
-
-    Usage:
-        llm = ScriptedLLM([
-            'result = pdb2gmx(pdb_file="eiwit.pdb")\nprint(result)',
-            'final_answer("Pipeline complete")',
-        ])
-        agent = CodeAgent(tools=[...], model=llm)
-        agent.run("Run the pipeline")
+    Responses are wrapped in the correct code block tags for
+    the installed SmolAgent version.
     """
 
     def __init__(self, responses: list[str]):
         self._responses = list(responses)
         self._index     = 0
-        self.call_log: list[str] = []   # records all calls for assertion
+        self.call_log: list[str] = []
 
     def __call__(self, messages: list, **kwargs) -> MockMessage:
         if self._index >= len(self._responses):
-            # Safety fallback — return final_answer to stop infinite loop
-            content = 'final_answer("No more scripted responses.")'
+            content = _wrap_in_code_block(
+                'final_answer("No more scripted responses.")'
+            )
         else:
-            content = self._responses[self._index]
+            raw     = self._responses[self._index]
+            content = _wrap_in_code_block(raw)
             self._index += 1
 
         self.call_log.append(content)
@@ -69,18 +85,18 @@ class ScriptedLLM:
 
 class CapturingLLM:
     """
-    A mock LLM that captures all messages sent to it and
-    returns a configurable response. Used to inspect what
-    the agent sends to the LLM (e.g. tool outputs, state).
+    A mock LLM that captures all messages sent to it.
     """
 
     def __init__(self, default_response: str = 'final_answer("done")'):
-        self.default_response  = default_response
+        self.default_response   = default_response
         self.received_messages: list[list] = []
 
     def __call__(self, messages: list, **kwargs) -> MockMessage:
         self.received_messages.append(messages)
-        return MockMessage(content=self.default_response)
+        return MockMessage(
+            content=_wrap_in_code_block(self.default_response)
+        )
 
     @property
     def last_messages(self) -> list:
