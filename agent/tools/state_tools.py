@@ -82,12 +82,26 @@ class PipelineStateTool(Tool):
 
     def _load(self) -> dict:
         if self.state_file.exists():
-            return json.loads(self.state_file.read_text())
-        return dict(self._DEFAULT_STATE)  # fresh copy
+            try:
+                return json.loads(self.state_file.read_text())
+            except json.JSONDecodeError:
+                # Corrupted file — return defaults rather than crashing
+                import logging
+                logging.getLogger("gromacs_agent.state").warning(
+                    "State file %s contains invalid JSON. "
+                    "Returning default state.",
+                    self.state_file,
+                )
+                return dict(self._DEFAULT_STATE)
+        return dict(self._DEFAULT_STATE)
 
     def _save(self, state: dict) -> None:
+        from datetime import datetime, timezone
         state["last_updated"] = datetime.now(timezone.utc).isoformat()
+        # Create parent directories if they don't exist  ← fix
+        self.state_file.parent.mkdir(parents=True, exist_ok=True)
         self.state_file.write_text(json.dumps(state, indent=2, default=str))
+
 
     def forward(self, action: str, updates: dict | None = None) -> str:
         action = action.strip().lower()
