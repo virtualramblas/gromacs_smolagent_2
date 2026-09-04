@@ -20,6 +20,11 @@ import yaml
 from agent.orchestrator import build_agent, load_config
 from agent.tools.state_tools import PipelineStateTool
 
+from opentelemetry.sdk.trace import TracerProvider
+from smolagents import CodeAgent, LiteLLMModel, TransformersModel
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -88,6 +93,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the agent task prompt and exit without running.",
     )
+    parser.add_argument("-telemetry", 
+        type=bool, 
+        default=False,
+        help="Enables telemetry when set to True. Default is False.")
+    parser.add_argument("-telemetry_server_url", 
+        type=str, 
+        default="http://0.0.0.0:6006/v1/traces",
+        help="The telemetry server URL. This argument is used only when telemetry is enabled")
     return parser.parse_args()
 
 
@@ -183,6 +196,14 @@ def main() -> int:
         log_file=log_cfg.get("log_file", "agent_run.log"),
     )
     logger = logging.getLogger("gromacs_agent.run")
+
+    # Start telemetry (if enabled)
+    if args.telemetry:
+        endpoint = args.telemetry_server_url
+        trace_provider = TracerProvider()
+        trace_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(endpoint)))
+
+        SmolagentsInstrumentor().instrument(tracer_provider=trace_provider)
 
     pdb_path = Path(args.pdb_file)
     if not pdb_path.exists():
