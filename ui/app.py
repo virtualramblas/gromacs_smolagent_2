@@ -189,6 +189,28 @@ def build_app() -> gr.Blocks:
             with gr.TabItem("📊  Results", id="tab-results"):
                 results_components = build_results_tab(ui_state)
 
+        # Auto-scroll the log textbox to the bottom on every update
+        gr.HTML("""
+        <script>
+        (function() {
+            // Poll for the log textbox and auto-scroll it
+            function scrollLogToBottom() {
+                // Gradio renders textareas inside .log-panel divs
+                const logPanels = document.querySelectorAll('.log-panel textarea');
+                logPanels.forEach(function(ta) {
+                    ta.scrollTop = ta.scrollHeight;
+                });
+            }
+
+            // Run on a 2.5s interval (slightly after the 2s Gradio poll)
+            setInterval(scrollLogToBottom, 2500);
+
+            // Also run whenever a Gradio update event fires
+            document.addEventListener('gradio:update', scrollLogToBottom);
+        })();
+        </script>
+        """)
+
         # ── Footer ────────────────────────────────────────────────────────
         gr.HTML("""
         <div style="text-align:center; color:#9ca3af;
