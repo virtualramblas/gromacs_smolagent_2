@@ -143,7 +143,6 @@ def build_live_log_tab(ui_state: UIState) -> dict:
         interactive  = False,
         elem_classes = ["log-panel"],
         value        = "Waiting for run to start...",
-        show_copy_button = True,
     )
 
     # ── Action buttons ────────────────────────────────────────────────────
