@@ -217,7 +217,7 @@ def build_app() -> gr.Blocks:
                     font-size:0.75rem; margin-top:16px; padding:8px;">
             GROMACS Agent UI &nbsp;|&nbsp;
             smolagents 1.26.0 &nbsp;|&nbsp;
-            <a href="http://go/gpteal/" style="color:#0d9488;">GPTeal</a>
+            <a href="https://github.com/virtualramblas/gromacs_smolagent_2" style="color:#0d9488;">GitHub</a>
         </div>
         """)
 

@@ -74,6 +74,7 @@ class UIState:
     use_gpu:        bool         = False
     llm_backend:    str          = "ollama"
     llm_model:      str          = "qwen2.5:14b"
+    llm_url:        str          = "http://localhost:11434"
     temperature:    float        = 0.1
     max_steps:      int          = 60
 

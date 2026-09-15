@@ -564,13 +564,17 @@ def _build_agent_config(
     ui_state:   UIState,
     state_file: Path,
 ) -> dict:
-    """Build the agent config dict from UIState."""
     return {
         "llm": {
             "backend":     ui_state.llm_backend,
             "model_id":    ui_state.llm_model,
             "temperature": ui_state.temperature,
             "max_tokens":  4096,
+            "api_base":    (
+                ui_state.llm_url.strip()
+                if ui_state.llm_url.strip()
+                else "http://localhost:11434"
+            ),
         },
         "pipeline": {
             "work_dir":              str(ui_state.work_dir),

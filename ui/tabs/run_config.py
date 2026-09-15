@@ -298,7 +298,8 @@ def build_run_config_tab(ui_state: UIState) -> dict:
             ui_state.llm_backend  = llm_backend
             ui_state.llm_model    = llm_model
             ui_state.temperature  = temperature
-
+            ui_state.llm_url      = llm_url.strip() if llm_url else ""
+            
         # Signal the runner (UI-7 will wire this to the actual agent)
         from ui.runner import start_run
         start_run(ui_state, resume=False)
